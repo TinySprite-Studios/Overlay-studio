@@ -14,7 +14,7 @@ function log(text,kind='info'){
 function action(id,fn){$(id).addEventListener('click',()=>Promise.resolve().then(fn).catch(report));}
 const language=name=>({js:'javascript',mjs:'javascript',cjs:'javascript',html:'html',css:'css',json:'json',svg:'xml',md:'markdown',cmd:'bat'})[name.split('.').pop()]||'plaintext';
 function isDirty(doc){return doc.model.getValue()!==doc.saved;}
-function dirty(){return sceneDirty||[...documents.values()].some(isDirty);}
+function dirty(){return eventsDirty||sceneDirty||[...documents.values()].some(isDirty);}
 function renderFiles(){
   $('files').replaceChildren();if(!state)return;
   const query=$('filter').value.toLowerCase();const tree={children:new Map()};
@@ -49,7 +49,7 @@ async function openFile(name){
 }
 async function saveFile(name){const doc=documents.get(name);if(!doc)return;const value=doc.model.getValue();await call('save',name,value,doc.saved);doc.saved=value;tabs();}
 async function save(){if(!active)return;await saveFile(active);refresh();notice('Saved '+active);}
-async function saveAll(){for(const [name,doc]of documents)if(isDirty(doc))await saveFile(name);if(sceneDirty)await saveScene();refresh();notice('All changes saved');}
+async function saveAll(){for(const [name,doc]of documents)if(isDirty(doc))await saveFile(name);if(sceneDirty)await saveScene();if(eventsDirty)await saveEvents();refresh();notice('All changes saved');}
 async function closeTab(name){
   const doc=documents.get(name);if(!doc)return;
   if(isDirty(doc)){const choice=await call('resolve-close',name);if(choice===2)return;if(choice===0)await saveFile(name);}
@@ -63,8 +63,8 @@ window.canCloseStudio=async()=>{
 };
 function showView(next){
   view=next;document.querySelector('main').dataset.view=next;
-  for(const value of ['workspace','scenes','console']){$('view-'+value).classList.toggle('active',value===next);$('view-'+value).setAttribute('aria-selected',String(value===next));}
-  const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
+  for(const value of ['workspace','scenes','events','console']){$('view-'+value).classList.toggle('active',value===next);$('view-'+value).setAttribute('aria-selected',String(value===next));}
+  const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],events:['Stream events.','Customise your channel rewards and event colours.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
   $('page-title').textContent=titles[next][0];$('page-description').textContent=titles[next][1];
   if(next==='console'){unread=0;$('console-count').hidden=true;$('console').scrollTop=$('console').scrollHeight;}
   if(next==='scenes'&&!selectedScene&&state?.scenes.length)selectScene(state.scenes[0].id).catch(report);
@@ -72,7 +72,7 @@ function showView(next){
 }
 function applyState(next){
   state=next;$('project-name').textContent=state.name;$('project-path').textContent=state.root;$('project-path').title=state.root;
-  $('server-status').textContent='OBS SERVER · '+state.obsURL.replace('http://','');renderFiles();renderPreviewFiles();renderScenes();setRunning(state.running);
+  $('server-status').textContent='OBS SERVER · '+state.obsURL.replace('http://','');renderFiles();renderPreviewFiles();renderScenes();if(!eventsDirty)renderEvents();setRunning(state.running);
 }
 function renderPreviewFiles(){const current=$('preview-file').value;$('preview-file').replaceChildren();for(const file of state.files.filter(f=>f.type!=='directory'&&f.name.endsWith('.html'))){const option=new Option(state.scenes.find(s=>s.file===file.name)?.config.name||file.name,file.name);$('preview-file').append(option);}const names=[...$('preview-file').options].map(option=>option.value);$('preview-file').value=names.includes(current)?current:['overlays/overlay-horizontal.html','overlay-horizontal.html',state.scenes[0]?.file,...names].find(name=>names.includes(name))||'';}
 function dimensions(){return $('layout').value==='vertical'?[1080,1920]:[1920,1080];}
@@ -85,7 +85,7 @@ function refresh(){
 function setRunning(value){running=value;$('run').disabled=value;$('stop').disabled=!value;$('run-status').textContent=value?'● Runner active':'● Runner stopped';$('run-status').classList.toggle('running',value);$('console-input').disabled=!value;}
 async function changeProject(method){
   if(switching)return;if(dirty()){const choice=await call('resolve-close','your project before switching');if(choice===2)return;if(choice===0)await saveAll();}
-  switching=true;try{const next=await call(method);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();if(method==='new-project'){showView('scenes');await selectScene(next.scenes[0].id);}notice('Opened '+next.name);}finally{switching=false;}
+  switching=true;try{const next=await call(method);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;eventsDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();if(method==='new-project'){showView('scenes');await selectScene(next.scenes[0].id);}notice('Opened '+next.name);}finally{switching=false;}
 }
 function renderScenes(){
   $('scene-count').textContent=state.scenes.length;$('scene-cards').replaceChildren();
@@ -97,6 +97,7 @@ function assetOptions(id,regex,value){const select=$(id);select.replaceChildren(
 function fillScene(){
   $('scene-empty').hidden=!!selectedScene;$('scene-form').hidden=!selectedScene;$('scene-code').disabled=!selectedScene;$('scene-vertical').disabled=!selectedScene;
   if(!selectedScene)return;
+  $('scene-form').classList.toggle('live-overlay',!!selectedScene.external);
   $('scene-form').classList.toggle('portrait-copy',!!selectedScene.portrait);$('portrait-help').hidden=!selectedScene.portrait;
   const c=selectedScene.config;assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,c.background);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,c.logo);
   for(const [key,value]of Object.entries(c)){const field=$('scene-form').elements.namedItem(key);if(!field)continue;if(field.type==='checkbox')field.checked=value;else field.value=value;}
@@ -108,7 +109,7 @@ async function selectScene(id){
 }
 async function saveScene(){
   if(!selectedScene||savingScene)return;if(!$('scene-form').reportValidity())throw Error('Complete the scene settings first.');
-  const prefix='scenes/'+selectedScene.id+'/';for(const name of [prefix+'config.js',prefix+'scene.json'])if(documents.has(name)&&isDirty(documents.get(name)))throw Error('Save or close your edits to '+name+' before applying visual settings.');
+  const prefix='scenes/'+selectedScene.id+'/';for(const name of selectedScene.external?['tss-theme.js']:[prefix+'config.js',prefix+'scene.json'])if(documents.has(name)&&isDirty(documents.get(name)))throw Error('Save or close your edits to '+name+' before applying visual settings.');
   const values=Object.fromEntries(new FormData($('scene-form')).entries());values.animate=$('scene-form').elements.namedItem('animate').checked;
   savingScene=true;try{const result=await call('scene-update',selectedScene.id,{...selectedScene.config,...values},selectedScene.revision);sceneDirty=false;selectedScene=result.scene;applyState(result.state);fillScene();$('preview-file').value=selectedScene.file;$('layout').value=selectedScene.config.layout;refresh();notice('Scene saved · refresh its OBS browser source to see the update');}finally{savingScene=false;}
 }
@@ -149,7 +150,7 @@ action('import-assets',async()=>{const result=await call('import-assets');if(res
 action('folder',()=>call('folder'));action('refresh',refresh);action('copy-url',copyURL);action('obs-copy',copyURL);
 action('obs-help',()=>{$('obs-url').value=state.obsURL+'/'+$('preview-file').value.split('/').map(encodeURIComponent).join('/');$('obs-dimensions').textContent='Width '+dimensions()[0]+' · Height '+dimensions()[1];$('obs-dialog').showModal();});
 for(const name of ['minimize','maximize','close'])action(name,()=>call(name));
-for(const name of ['workspace','scenes','console'])action('view-'+name,()=>showView(name));
+for(const name of ['workspace','scenes','events','console'])action('view-'+name,()=>showView(name));
 action('enlarge',()=>{const enlarged=document.querySelector('.preview-panel').classList.toggle('preview-enlarged');$('enlarge').textContent=enlarged?'⛶ Restore':'⛶ Enlarge';$('enlarge').setAttribute('aria-label',enlarged?'Restore preview':'Enlarge preview');scale();});
 action('clear',()=>{$('console').replaceChildren();unread=0;$('console-count').hidden=true;});
 for(const kind of ['file','folder'])action('new-'+kind,()=>{createKind=kind;$('file-dialog-title').textContent='Create a '+kind;$('filename').value='';$('filename').placeholder=kind==='file'?'scenes/custom.html':'assets/backgrounds';$('file-error').textContent='';$('file-dialog').showModal();});
@@ -181,7 +182,7 @@ action('playground',()=>{$('preview-mode').value='offline';$('preview-file').val
 document.querySelectorAll('[data-alert]').forEach(button=>button.onclick=()=>{$('preview').contentWindow.postMessage({type:'alert',data:{kind:button.dataset.alert,name:'TinySprite',detail:'A little magic for your stream ✦'}},state.previewURL);notice('Preview alert sent');});
 $('console-form').onsubmit=async event=>{event.preventDefault();try{await call('input',$('console-input').value);$('console-input').value='';}catch(error){report(error);}};
 window.addEventListener('keydown',event=>{
-  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();(event.shiftKey?saveAll():view==='scenes'?saveScene():save()).catch(report);}
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();(event.shiftKey?saveAll():view==='scenes'?saveScene():view==='events'?saveEvents():save()).catch(report);}
   if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='w'&&active){event.preventDefault();closeTab(active).catch(report);}
   if(event.key==='Escape'&&document.querySelector('.preview-enlarged')){$('enlarge').click();}
 });
@@ -218,7 +219,7 @@ action('force-apply',async()=>{
 });
 
 function renderUpdate(update){
-  const descriptions={idle:'Check for a new Studio release.',checking:'Checking GitHub for updates...',current:'Studio is up to date.',available:'Studio '+update.version+' is available.',downloading:'Downloading update: '+(update.percent||0)+'%',downloaded:'Studio '+update.version+' is ready. Restarting stops the overlay while the update installs.',installing:'Installing update...',error:update.message,disabled:update.message};
+  const descriptions={idle:'Check for a new Studio release.',checking:'Checking GitHub for updates...',current:'Studio is up to date.',available:'Studio '+update.version+' is available.',downloading:(update.downloadMode==='full'?'Downloading full update':update.downloadMode==='changes'?'Downloading changed data':'Preparing update')+': '+(update.percent||0)+'%'+(update.total?' \u00b7 '+(update.transferred/1048576).toFixed(1)+' / '+(update.total/1048576).toFixed(1)+' MB':''),downloaded:'Studio '+update.version+' is ready. Restarting stops the overlay while the update installs.',installing:'Installing update...',error:update.message,disabled:update.message};
   $('update-status').textContent='v'+update.currentVersion+' | '+descriptions[update.status];
   $('update-check').disabled=['disabled','checking','downloading','downloaded','installing','available'].includes(update.status);
   $('update-download').hidden=update.status!=='available';
@@ -231,3 +232,34 @@ window.studio.on(message=>{if(message.type==='update')renderUpdate(message);});
 call('update-state').then(renderUpdate).catch(report);
 
 document.getElementById('tinysprite-link').addEventListener('click',event=>{event.preventDefault();call('tinysprite-website').catch(report);});
+
+let eventsDirty=false,eventsRevision;
+function renderEvents(){
+  const settings=state.events.settings;eventsRevision=state.events.revision;
+  $('event-settings').replaceChildren();$('event-colours').replaceChildren();
+  for(const event of settings.events){
+    const label=document.createElement('label');label.textContent=event.canonical+' \u00b7 '+(event.trigger==='bits'?'Bits Power-up':'Channel points');
+    const input=document.createElement('input');input.value=event.name;input.name=event.id;input.required=true;input.maxLength=80;label.append(input);$('event-settings').append(label);
+  }
+  for(const [name,colour]of Object.entries(settings.colours||{})){
+    const label=document.createElement('label');label.textContent=name;
+    const input=document.createElement('input');input.type='color';input.value=colour;input.name='colour-'+name;label.append(input);$('event-colours').append(label);
+  }
+  const paint=settings.events.some(event=>event.id==='paint'||event.id==='paint-pro');
+  document.querySelector('.manual-colour').hidden=!paint;$('palette-heading').hidden=!paint;
+  $('events-save').hidden=!settings.events.length;
+  if(!settings.events.length)$('event-settings').textContent='No configurable events have been added to this project.';
+  $('events-save').textContent='Apply changes';
+}
+async function saveEvents(){
+  if(!$('events-form').reportValidity())throw Error('Complete the event settings first.');
+  const openSettings=documents.get('tss-events.json');
+  if(openSettings&&isDirty(openSettings))throw Error('Save or close your code edits to tss-events.json first.');
+  const settings=state.events.settings,form=$('events-form').elements;
+  const events=settings.events.map(event=>({...event,name:form.namedItem(event.id).value}));
+  const colours=Object.fromEntries(Object.keys(settings.colours||{}).map(name=>[name,form.namedItem('colour-'+name).value]));
+  const result=await call('events-update',{events,colours},eventsRevision);
+  eventsDirty=false;applyState(result);notice('Event settings saved. Reward names must match Twitch.');
+}
+$('events-form').oninput=()=>{eventsDirty=true;$('events-save').textContent='Apply changes \u2022';};
+$('events-form').onsubmit=event=>{event.preventDefault();saveEvents().catch(report);};

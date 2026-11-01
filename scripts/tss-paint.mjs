@@ -9,13 +9,14 @@ export const PAINT_COLOURS = Object.freeze({ red: '#ff4545', orange: '#ff952e', 
   green: '#37ff7d', blue: '#479cff', purple: '#b56cff', pink: '#ff71cb', cyan: '#42edff', white: '#ffffff', rgb: '#ff4545' });
 
 // Keep the schedule on the helper so all browser sources share the same timer.
-export function createPaintQueue(saved = {}, { now = Date.now, persist = () => {}, publish = () => {} } = {}) {
+export function createPaintQueue(saved = {}, { now = Date.now, persist = () => {}, publish = () => {}, settings = () => ({}) } = {}) {
   let queue = Array.isArray(saved.queue) ? saved.queue.filter(item =>
     item && (Object.hasOwn(PAINT_COLOURS, item.colour) || isHex(item.colour)) && isHex(item.hex) && Number.isFinite(item.endsAt) && Number.isFinite(item.startsAt)) : [];
   const seen = new Set(Array.isArray(saved.seen) ? saved.seen : []);
   let currentId;
   const snapshot = () => ({ active: queue.find(item => item.startsAt <= now() && item.endsAt > now()) || null,
     waiting: queue.filter(item => item.startsAt > now()).length });
+  const palette = () => Object.fromEntries(Object.entries({...PAINT_COLOURS, ...settings().colours}).filter(([key, value]) => Object.hasOwn(PAINT_COLOURS, key) && isHex(value)));
   const save = () => persist({ queue, seen: [...seen] });
   const tick = () => {
     const remaining = queue.filter(item => item.endsAt > now());
@@ -38,7 +39,7 @@ export function createPaintQueue(saved = {}, { now = Date.now, persist = () => {
         startsAt: Math.max(start, item.startsAt - offset) + duration,
         endsAt: item.endsAt - offset + duration }));
       queue.unshift({ id: `manual-${globalThis.crypto.randomUUID()}`, manual: true,
-        name: 'Stream host', colour, hex: PAINT_COLOURS[colour] || colour,
+        name: 'Stream host', colour, hex: palette()[colour] || PAINT_COLOURS[colour] || colour,
         startsAt: start, endsAt: start + duration });
       save();
       return tick();
@@ -53,7 +54,7 @@ export function createPaintQueue(saved = {}, { now = Date.now, persist = () => {
       const colour = Object.hasOwn(PAINT_COLOURS, choice) ? choice : 'purple';
       const startsAt = Math.max(now(), queue.at(-1)?.endsAt || 0);
       queue.push({ id: event.id, name: String(event.user_name || 'Viewer').slice(0, 150), colour,
-        hex: PAINT_COLOURS[colour] || colour, startsAt,
+        hex: palette()[colour] || PAINT_COLOURS[colour] || colour, startsAt,
         endsAt: startsAt + (powerUp ? POWER_UP_DURATION : PAINT_DURATION) });
       seen.add(event.id);
       if (seen.size > 5000) seen.delete(seen.values().next().value);

@@ -1,0 +1,27 @@
+{
+  "events": [
+    {
+      "id": "paint",
+      "name": "Paint the Stream",
+      "canonical": "Paint the Stream",
+      "trigger": "points"
+    },
+    {
+      "id": "paint-pro",
+      "name": "Paint the stream! PRO",
+      "canonical": "Paint the stream! PRO",
+      "trigger": "bits"
+    }
+  ],
+  "colours": {
+    "red": "#ff4545",
+    "orange": "#ff952e",
+    "yellow": "#ffe34d",
+    "green": "#37ff7d",
+    "blue": "#479cff",
+    "purple": "#b56cff",
+    "pink": "#ff71cb",
+    "cyan": "#42edff",
+    "white": "#ffffff"
+  }
+}

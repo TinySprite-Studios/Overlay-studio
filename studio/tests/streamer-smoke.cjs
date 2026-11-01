@@ -8,16 +8,20 @@ const {list}=require('../workspace.cjs');
  let app;
  try{
   app=await electron.launch(process.env.TSS_TEST_EXE?{executablePath:process.env.TSS_TEST_EXE,env}:{args:[source],env});
-  const page=await app.firstWindow();await page.setViewportSize({width:1100,height:740});await page.waitForFunction(()=>typeof state!=='undefined'&&state&&editor);
+  const page=await app.firstWindow();page.setDefaultTimeout(15000);page.on('pageerror',error=>console.error(error));await page.setViewportSize({width:1100,height:740});await page.waitForFunction(()=>typeof state!=='undefined'&&state&&editor);
   assert.equal(await page.locator('#developer-mode').getAttribute('aria-pressed'),'false');
   for(const selector of ['#files','#filter','.editor-panel','#new-file','#new-folder'])assert.equal(await page.locator(selector).isVisible(),false,selector);
-  for(const selector of ['.preview-panel','.test-controls','.manual-colour'])assert.equal(await page.locator(selector).isVisible(),true,selector);
+  for(const selector of ['.preview-panel','.test-controls'])assert.equal(await page.locator(selector).isVisible(),true,selector);
   assert.equal(await page.evaluate(()=>documents.size),0);
   assert.equal(await page.locator('aside .update-bar #update-check').count(),1);
   assert.equal(await page.locator('main .update-bar').count(),0);
   assert.equal(await page.locator('.console-panel').isVisible(),false);
   await page.locator('[data-alert=follow]').click();assert.match(await page.locator('#notice').textContent(),/Preview alert sent/);
+  assert.equal(await page.locator('.manual-colour').isVisible(),false);
+  await page.locator('#view-events').click();
+  assert.equal(await page.locator('.manual-colour').isVisible(),true);
   await page.locator('#force-apply').click();await page.waitForFunction(()=>document.querySelector('#console').textContent.includes('Start Run overlay first'));
+  await page.locator('#view-workspace').click();
   await page.locator('#playground').click();await page.frameLocator('#preview').locator('h1').waitFor();
   await page.locator('#view-scenes').click();await page.waitForFunction(()=>!!selectedScene);
   assert.equal(await page.locator('#scene-code').isVisible(),false);
@@ -64,5 +68,8 @@ const {list}=require('../workspace.cjs');
   assert.equal(await page.locator('#developer-mode').getAttribute('aria-pressed'),'false');
   assert.equal(await page.locator('.console-panel').isVisible(),false);
   console.log('PASS: streamer defaults, previews, scenes, alerts, overrides, console, Developer mode, Save/Discard/Cancel, and reset on launch.');
- }finally{if(app)await app.close();fs.rmSync(root,{recursive:true,force:true});}
+ }finally{
+   if(app){await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().forEach(win=>win.removeAllListeners('close')));await app.close();}
+   try{fs.rmSync(root,{recursive:true,force:true,maxRetries:5,retryDelay:200});}catch(error){if(error.code!=='EBUSY')throw error;}
+ }
 })().catch(error=>{console.error(error);process.exitCode=1;});

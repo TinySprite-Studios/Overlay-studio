@@ -1,3 +1,4 @@
+import {eventSettings, routeEvent} from './tss-events.mjs';
 import { serveFile } from './public-files.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -302,6 +303,9 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
       } else if (metadata.message_type === 'notification' && !seen.has(metadata.message_id)) {
         seen.add(metadata.message_id);
         if (seen.size > 1000) seen.delete(seen.values().next().value);
+        if (['channel.custom_power_up_redemption.add', 'channel.channel_points_custom_reward_redemption.add'].includes(payload.subscription.type)) {
+          payload.event = routeEvent(payload.event, eventSettings(root));
+        }
         if (payload.subscription.type === 'channel.custom_power_up_redemption.add') {
           const event = payload.event;
           if (!isColourPowerUp(event) || event.status === 'canceled') return;
@@ -360,6 +364,7 @@ async function main() {
   activity = { ...activity, ...read(`activity-${identity.user_id}.json`, {}) };
   if (process.argv.includes('--setup')) { await setup(); return; }
   paint = createPaintQueue(read(`paint-${identity.user_id}.json`, {}), {
+    settings: () => eventSettings(root),
     persist: state => save(`paint-${identity.user_id}.json`, state),
     publish: state => {
       for (const client of clients) client.write(`event: paint\ndata: ${JSON.stringify(state)}\n\n`);

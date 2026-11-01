@@ -26,8 +26,10 @@ test('OBS server serves scenes and range requests; preview injection stays out o
   try{
     const scene=scenes.create(root,scenes.defaults('brb'));fs.mkdirSync(path.join(root,'assets'));fs.writeFileSync(path.join(root,'assets','clip.mp4'),Buffer.from('0123456789'));fs.writeFileSync(path.join(root,'private.json'),'secret');
     live=await serve(()=>root);preview=await serve(()=>root,0,true);
-    const html=await(await fetch(live.url+'/'+scene.file)).text();assert.ok(html.includes('scene.js'));assert.ok(!html.includes('window.EventSource='));
-    assert.ok((await(await fetch(preview.url+'/'+scene.file)).text()).includes('window.EventSource='));
+    const html=await(await fetch(live.url+'/'+scene.file)).text();assert.ok(html.includes('scene.js'));assert.ok(!html.includes('/__studio-preview.js'));
+    assert.ok((await(await fetch(preview.url+'/'+scene.file)).text()).includes('/__studio-preview.js'));
+    assert.ok((await(await fetch(preview.url+'/__studio-preview.js')).text()).includes('window.EventSource='));
+    assert.equal((await fetch(live.url+'/__studio-preview.js')).status,404);
     const range=await fetch(live.url+'/assets/clip.mp4',{headers:{Range:'bytes=2-5'}});assert.equal(range.status,206);assert.equal(await range.text(),'2345');assert.equal(range.headers.get('content-type'),'video/mp4');
     assert.equal((await fetch(live.url+'/assets/clip.mp4',{headers:{Range:'bytes=50-60'}})).status,416);
     for(const name of ['private.json','studio/main.cjs','%2e%2e%5csecret.js'])assert.equal((await fetch(live.url+'/'+name)).status,404);

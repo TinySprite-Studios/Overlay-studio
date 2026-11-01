@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {serve} = require('./server.cjs');
 const scenes = require('./scenes.cjs');
+const events = require('./events.cjs');
 const {spawn} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
 const {resolveFile, list, editable, media} = require('./workspace.cjs');
@@ -37,7 +38,7 @@ function watch() {
   });
   watcher.on('error', error => log(error.message, 'error'));
 }
-const state = () => ({root, name:path.basename(root), files:list(root), previewURL, obsURL:published.url, scenes:scenes.scenes(root), presets:Object.entries(scenes.presets).map(([type])=>scenes.defaults(type)), running:!!child});
+const state = () => ({root, name:path.basename(root), files:list(root), previewURL, obsURL:published.url, events:events.read(root), scenes:scenes.scenes(root), presets:Object.entries(scenes.presets).map(([type])=>scenes.defaults(type)), running:!!child});
 async function stop() {
   const active = child;
   if (!active) return;
@@ -140,6 +141,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
       if(path.extname(file)!=='.html'||!fs.statSync(file).isFile())throw Error('Select an HTML scene first.');
       const url=published.url+'/'+name.split('/').map(encodeURIComponent).join('/');clipboard.writeText(url);return url;
     }
+    case 'events-update': events.update(root,args[0],args[1]); return state();
     case 'scene-create': {const scene=scenes.create(root,args[0]);return {scene,state:state()};}
     case 'scene-update': {const scene=scenes.update(root,args[0],args[1],args[2]);return {scene,state:state()};}
     case 'scene-duplicate': {const source=scenes.read(root,args[0]);const scene=scenes.create(root,{...source.config,name:source.config.name+' Copy'},source.id);return {scene,state:state()};}

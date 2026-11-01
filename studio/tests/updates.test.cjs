@@ -40,3 +40,22 @@ test('overlapping checks are suppressed',async()=>{
   const pending=f.controller.check();await f.controller.check();assert.equal(calls,1);
   release();await pending;
 });
+
+test('changed-block downloads stay enabled and report a full-download fallback',async()=>{
+  const f=fixture();
+  assert.equal(f.updater.disableDifferentialDownload,false);
+  await f.controller.check();
+  f.updater.logger.info('Full: 100 MB, To download: 2 MB (2%)');
+  assert.equal(f.controller.state().downloadMode,'changes');
+  f.updater.logger.error('Cannot download differentially, fallback to full download: unavailable old map');
+  assert.equal(f.controller.state().downloadMode,'full');
+  assert.ok(f.events.some(event=>event.type==='log'&&event.text.includes('projects are preserved')));
+});
+
+test('confirmed updates install silently in place and restart Studio',async()=>{
+  const f=fixture();await f.controller.check();await f.controller.download();
+  let received;
+  f.updater.quitAndInstall=(...args)=>{received=args;};
+  f.controller.install();
+  assert.deepEqual(received,[true,true]);
+});

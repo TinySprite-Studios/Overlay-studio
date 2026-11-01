@@ -26,13 +26,25 @@ function sceneDir(root,id) {
   return resolveFile(root,'scenes/'+id);
 }
 function revision(dir) {return crypto.createHash('sha256').update(fs.readFileSync(path.join(dir,'scene.json'))).update(fs.readFileSync(path.join(dir,'config.js'))).digest('hex');}
+function liveScene(root) {
+  const file=resolveFile(root,'tss-theme.js');
+  const text=fs.existsSync(file)?fs.readFileSync(file,'utf8'):'';
+  const match=text.match(/^window\.TSS_THEME = (.+);\s*$/s);
+  const theme=match?JSON.parse(match[1]):{};
+  return {id:'tss_project-live',file:'overlay-horizontal.html',external:true,
+    config:normalize({...defaults('live'),accent:theme.accent||'#37ff7d'}),
+    revision:crypto.createHash('sha256').update(text).digest('hex')};
+}
 function read(root,id) {
+  if(id==='tss_project-live'&&fs.existsSync(resolveFile(root,'overlay-horizontal.html')))return liveScene(root);
   const dir=sceneDir(root,id);
   resolveFile(root,`scenes/${id}/config.js`);
   return {id,file:`scenes/${id}/index.html`,portrait:fs.existsSync(path.join(dir,'portrait-source.html')),config:normalize(JSON.parse(fs.readFileSync(resolveFile(root,`scenes/${id}/scene.json`),'utf8'))),revision:revision(dir)};
 }
 function scenes(root) {
-  return list(root).filter(f=>/^scenes\/tss_[a-z0-9_-]+\/scene.json$/.test(f.name)).flatMap(f=>{try{return [read(root,f.name.split('/')[1])];}catch{return [];}});
+  const found = list(root).filter(f=>/^scenes\/tss_[a-z0-9_-]+\/scene.json$/.test(f.name)).flatMap(f=>{try{return [read(root,f.name.split('/')[1])];}catch{return [];}});
+  if(fs.existsSync(resolveFile(root,'overlay-horizontal.html')))found.push(liveScene(root));
+  return found;
 }
 const html = '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Stream scene</title><link rel="stylesheet" href="style.css"></head><body><div id="background"></div><div class="shade"></div><div class="grid"></div><div class="orb one"></div><div class="orb two"></div><div class="frame"></div><header><div class="identity"><img id="logo" alt="Channel logo" hidden><span class="spark">✦</span><span id="channel"></span></div><span id="status"></span></header><main><div class="eyebrow" id="eyebrow"></div><h1 id="title"></h1><p id="subtitle"></p><div id="countdown" aria-live="off"></div><div class="camera"><span>CAMERA</span></div><div class="chat"><span>YOUR CHAT GOES HERE</span></div></main><footer><span id="social"></span><span class="signature" title="A tiny sprite lives here">✦</span><span id="clock"></span></footer><script src="config.js"></script><script src="scene.js"></script><script src="../../config.js"></script><script src="../../scripts/tss-paint.js"></script><script src="../../scripts/tss-alerts.js"></script></body></html>\n';
 const css = `:root{--accent:#e34855;--base:#10121a}*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden}body{color:#f5f6fa;background:var(--base);font-family:'Segoe UI',Arial,sans-serif}#background,.shade,.grid,.orb,.frame{position:absolute;pointer-events:none}#background{inset:0;background-size:cover;background-position:center}#background video{width:100%;height:100%;object-fit:cover}.shade{inset:0;background:#080a10;opacity:.65}.grid{inset:0;background-image:linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px);background-size:80px 80px;mask-image:linear-gradient(transparent,#000);opacity:.45}.orb{width:65vw;height:65vw;border-radius:50%;filter:blur(95px);opacity:.15;background:var(--accent);animation:drift 20s ease-in-out infinite alternate}.one{top:-65%;right:-15%}.two{bottom:-100%;left:-20%;animation-delay:-10s}.frame{inset:32px;border:1px solid #ffffff15}.frame:before,.frame:after{content:'';position:absolute;width:100px;height:3px;background:var(--accent);box-shadow:0 0 28px var(--accent)}.frame:before{top:-1px;left:36px}.frame:after{bottom:-1px;right:36px}header,footer{position:absolute;left:5%;right:5%;display:flex;justify-content:space-between;align-items:center;font-size:clamp(12px,1.2vw,28px);letter-spacing:.16em}header{top:7%}footer{bottom:7%;font-size:clamp(11px,1vw,22px);color:#bac0d0}.identity{display:flex;align-items:center;gap:18px;font-weight:700}.spark{color:var(--accent);font-size:2em}#logo{width:64px;height:64px;object-fit:contain}#status{font-size:.7em;border:1px solid #ffffff25;padding:12px 20px;border-radius:30px;color:#ccd0db}.signature{color:var(--accent);font-size:1.5em}main{position:absolute;inset:22% 8%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.eyebrow{text-transform:uppercase;letter-spacing:.45em;color:var(--accent);font-size:clamp(12px,1.3vw,28px);margin-bottom:24px}h1{font-size:clamp(44px,7vw,170px);line-height:1.05;letter-spacing:-.055em;margin:0;font-weight:700;max-width:100%;overflow-wrap:anywhere}p{font-size:clamp(18px,1.6vw,38px);color:#b4bbca;max-width:70%;line-height:1.6;margin:30px 0}#countdown{font-variant-numeric:tabular-nums;font-size:clamp(30px,4vw,100px);font-weight:300;letter-spacing:.12em;color:var(--accent);margin-top:12px}#countdown.finished{font-size:2vw;letter-spacing:.02em}.camera,.chat{display:none}.style-minimal .orb,.style-minimal .grid{display:none}.style-grid .orb{opacity:.07}.style-grid .grid{opacity:1}.no-motion .orb{animation:none}.type-chatting main{inset:17% 5% 16%;align-items:flex-start;justify-content:flex-start;text-align:left}.type-chatting h1{font-size:4vw}.type-chatting p{font-size:1.4vw;margin:15px 0}.type-chatting .camera{display:flex;position:absolute;left:0;top:28%;width:69%;bottom:0;border:2px solid var(--accent);border-radius:16px;background:#0006;align-items:center;justify-content:center}.type-chatting .chat{display:flex;position:absolute;right:0;top:0;width:27%;bottom:0;border:1px solid #ffffff25;border-radius:16px;background:#0003;align-items:center;justify-content:center}.camera span,.chat span{font-size:1vw;letter-spacing:.25em;color:#ffffff45}.type-live,.type-blank{background:transparent}.type-live .shade,.type-live .grid,.type-live .orb,.type-blank .shade,.type-blank .grid,.type-blank .orb,.type-blank .frame,.type-blank header,.type-blank footer{display:none}.type-live main{inset:auto 5% 5%;align-items:flex-start}.type-live h1{font-size:2.5vw}.type-live p{font-size:1.1vw;margin:8px 0}.type-live footer{display:none}.type-live .eyebrow{display:none}.type-live header{top:5%}.type-blank main{display:none}.vertical h1{font-size:12vw}.vertical p{font-size:3.3vw;max-width:95%}.vertical .eyebrow{font-size:2.5vw}.vertical header,.vertical footer{font-size:2vw}.vertical #countdown{font-size:9vw}.vertical .type-chatting{display:block}.vertical.type-chatting .camera{top:30%;width:100%;bottom:30%}.vertical.type-chatting .chat{top:74%;width:100%;bottom:0}.vertical.type-chatting h1{font-size:8vw}.vertical.type-chatting p{font-size:3vw}.vertical .camera span,.vertical .chat span{font-size:2vw}@keyframes drift{to{transform:translate(12%,18%) scale(1.2)}}@media(prefers-reduced-motion:reduce){.orb{animation:none}}`;
@@ -68,7 +80,15 @@ function create(root,input,sourceId) {
   }
   writeConfig(dir,config);return read(root,id);
 }
-function update(root,id,input,expected){const current=read(root,id),dir=sceneDir(root,id);if(current.revision!==expected)throw Error('Scene settings changed on disk. Reload the scene before applying settings.');writeConfig(dir,normalize(input));return read(root,id);}
+function update(root,id,input,expected){
+  if(id==='tss_project-live'){
+    const current=liveScene(root);
+    if(current.revision!==expected)throw Error('Live settings changed on disk. Reload before applying.');
+    const config=normalize(input);
+    fs.writeFileSync(resolveFile(root,'tss-theme.js'),'window.TSS_THEME = '+JSON.stringify({accent:config.accent})+';\n');
+    return liveScene(root);
+  }
+  const current=read(root,id),dir=sceneDir(root,id);if(current.revision!==expected)throw Error('Scene settings changed on disk. Reload the scene before applying settings.');writeConfig(dir,normalize(input));return read(root,id);}
 function bundled(root, source) {
   if(path.resolve(root)===path.resolve(source))return;
   const files=list(source);

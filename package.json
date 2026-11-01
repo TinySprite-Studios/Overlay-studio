@@ -1,6 +1,6 @@
 {
   "name": "tss-overlay",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "engines": {
     "node": ">=22"
@@ -11,7 +11,7 @@
     "preview": "node scripts/offline-preview.mjs",
     "studio": "electron .",
     "build:studio": "node studio/build.cjs",
-    "test:studio": "node --test studio/tests/workspace.test.cjs studio/tests/scenes.test.cjs studio/tests/public-files.test.cjs",
+    "test:studio": "node --test studio/tests/workspace.test.cjs studio/tests/scenes.test.cjs studio/tests/public-files.test.cjs studio/tests/events.test.cjs",
     "test:paint": "node --test studio/tests/paint.test.cjs",
     "test:studio:app": "node studio/tests/smoke.cjs",
     "test:updates": "node --test studio/tests/updates.test.cjs",
@@ -61,7 +61,8 @@
           "scripts/**/*",
           "assets/**/*",
           "docs/**/*",
-          "scenes/**/*"
+          "scenes/**/*",
+          "tss-events.json"
         ]
       }
     ],
@@ -81,13 +82,15 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": "store-asar"
     },
     "publish": {
       "provider": "github",
       "owner": "TinySprite-Studios",
       "repo": "overlay-studio"
-    }
+    },
+    "electronUpdaterCompatibility": ">=6.8.11"
   },
   "overrides": {
     "dompurify": "3.4.17"
