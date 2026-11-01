@@ -1,4 +1,4 @@
-import { createCare } from './tss-care.mjs';
+import { serveFile } from './public-files.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import { createPaintQueue, PAINT_REWARD, POWER_UP_REWARD, isColourPowerUp } from './tss-paint.mjs';
-import { createSummonQueue, SUMMON_REWARD } from './tss-summon.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const store = path.join(process.env.LOCALAPPDATA || os.homedir(), 'TSS-Overlay');
@@ -20,8 +19,6 @@ const save = (name, value) => {
 };
 const scopes = 'moderator:read:followers channel:read:subscriptions bits:read channel:read:redemptions';
 let paint;
-let summon;
-let care;
 let credentials = read('credentials.json', {});
 let activity = { follower: '', subscriber: '', cheerer: '', donator: '' };
 let identity;
@@ -289,7 +286,7 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
         timeout = ((payload.session.keepalive_timeout_seconds || 30) + 10) * 1000;
         arm();
         if (previous) { previous.close(); return; }
-        for (const [type, version] of [['stream.online','1'], ['stream.offline','1'], ['channel.follow','2'], ['channel.subscribe','1'], ['channel.subscription.message','1'], ['channel.cheer','1'], ['channel.channel_points_custom_reward_redemption.add','1'], ['channel.custom_power_up_redemption.add','1']]) {
+        for (const [type, version] of [['channel.follow','2'], ['channel.subscribe','1'], ['channel.subscription.message','1'], ['channel.cheer','1'], ['channel.channel_points_custom_reward_redemption.add','1'], ['channel.custom_power_up_redemption.add','1']]) {
           try {
             await api('eventsub/subscriptions', { method: 'POST', body: JSON.stringify({
               type, version, condition: { broadcaster_user_id: identity.user_id,
@@ -312,13 +309,9 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
           return;
         }
         if (payload.subscription.type === 'channel.channel_points_custom_reward_redemption.add') {
-          care.add(payload.event);
           if (paint.add(payload.event)) console.log('Paint the Stream: colour change scheduled.');
-          if (summon.add({...payload.event, careItem: care.snapshot().lastGift?.id === payload.event.id ? care.snapshot().lastGift.item : ''})) console.log('Summon TinySprite: visit scheduled.');
           return;
         }
-        if (payload.subscription.type === 'stream.online') { care.start(payload.event.id); return; }
-        if (payload.subscription.type === 'stream.offline') { care.stop(); return; }
         const next = applyEvent(activity, payload.subscription.type, payload.event);
         const key = { 'channel.follow': 'follower', 'channel.subscribe': 'subscriber',
           'channel.subscription.message': 'subscriber', 'channel.cheer': 'cheerer' }[payload.subscription.type];
@@ -366,15 +359,6 @@ async function main() {
   }
   activity = { ...activity, ...read(`activity-${identity.user_id}.json`, {}) };
   if (process.argv.includes('--setup')) { await setup(); return; }
-  care = createCare(read(`care-${identity.user_id}.json`, {}), {
-    persist: state => save(`care-${identity.user_id}.json`, state),
-    publish: state => { for (const client of clients) client.write(`event: care\ndata: ${JSON.stringify(state)}\n\n`); }
-  });
-  try {
-    const live = await api(`streams?user_id=${identity.user_id}`);
-    if (live.data?.[0]) care.start(live.data[0].id); else care.stop();
-  } catch { care.stop(); console.error('Could not check stream status; Sprite care is paused until the stream starts.'); }
-  setInterval(() => care.tick(), 1000);
   paint = createPaintQueue(read(`paint-${identity.user_id}.json`, {}), {
     persist: state => save(`paint-${identity.user_id}.json`, state),
     publish: state => {
@@ -382,15 +366,6 @@ async function main() {
     }
   });
   paint.tick();
-  summon = createSummonQueue(read(`summon-${identity.user_id}.json`, {}), {
-    persist: state => save(`summon-${identity.user_id}.json`, state),
-    publish: state => {
-      for (const client of clients) client.write(`event: summon\ndata: ${JSON.stringify(state)}\n\n`);
-    }
-  });
-  summon.tick();
-  setInterval(() => summon.tick(), 250);
-  console.log(`Channel points: listening for "${SUMMON_REWARD}". Each visit lasts 15 seconds.`);
   setInterval(() => paint.tick(), 250);
   console.log(`Channel points: listening for "${PAINT_REWARD}". Colours last 2 minutes; unknown colours use purple.`);
   console.log(`Bits Power-up: listening for "${POWER_UP_REWARD}". Each colour lasts 1 hour; queued in purchase order.`);
@@ -422,23 +397,11 @@ async function main() {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify(activity)}\n\n`);
       res.write(`event: paint\ndata: ${JSON.stringify(paint.tick())}\n\n`);
-      res.write(`event: summon\ndata: ${JSON.stringify(summon.tick())}\n\n`);
-      res.write(`event: care\ndata: ${JSON.stringify(care.tick())}\n\n`);
       clients.add(res);
       req.on('close', () => clients.delete(res));
       return;
     }
-    if(pathname === '/') {res.writeHead(302,{Location:'/overlays/overlay-horizontal.html'}).end();return;}
-    const name = pathname === '/' ? 'overlays/overlay-horizontal.html' : pathname.slice(1);
-    const allowed = ['overlays/overlay-horizontal.html', 'overlays/overlay-vertical.html', 'overlays/border.html', 'config.js', 'scripts/tss-alerts.js', 'scripts/tss-paint.js', 'scripts/tss-summon.js', 'scripts/tss-care.js'];
-    const asset = /^assets\/[a-zA-Z0-9_ .-]+\.(png|jpg|jpeg|webp|gif|svg)$/i.test(name);
-    if (!allowed.includes(name) && !asset) { res.writeHead(404).end(); return; }
-    const mime = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif', '.webp': 'image/webp' };
-    fs.readFile(path.join(root, name), (error, body) => {
-      if (error) { res.writeHead(404).end(); return; }
-      res.writeHead(200, { 'Content-Type': mime[path.extname(name).toLowerCase()], 'Cache-Control': 'no-store' });
-      res.end(body);
-    });
+    serveFile(req,res,root);
   });
   server.on('error', error => { console.error(error.code === 'EADDRINUSE' ? 'Port 8787 is in use. Close the other helper first.' : error.message); process.exit(1); });
   server.listen(8787, '127.0.0.1', () => console.log(`\nConnected as ${identity.login}.\nOBS Browser Source: http://127.0.0.1:8787/overlays/overlay-horizontal.html\nKeep this window open while streaming. Ctrl+C stops it.`));

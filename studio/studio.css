@@ -21,9 +21,12 @@
 .streamer-mode main[data-view=workspace] .workarea{grid-template-columns:minmax(0,1fr)!important}
 .streamer-mode main[data-view=workspace] #resize{display:none}
 .streamer-mode main:not([data-view=console]) .workarea{flex:1 0 410px;min-height:410px}
-.streamer-mode main:not([data-view=console]) .console-panel{display:flex;flex:0 0 160px;min-height:160px}
-.streamer-mode main:not([data-view=console]) .console-intro{display:none}
-.streamer-mode main:not([data-view=console]) #console-form{height:35px;flex-shrink:0}
 .streamer-mode main[data-view=scenes] .test-controls{display:flex}
 .streamer-mode main[data-view=console] .console-panel{display:flex}
 .streamer-mode .project-banner,.streamer-mode #scene-library,.streamer-mode .workspace-bar,.streamer-mode .update-bar{flex-shrink:0}
+.sidebar-bottom .update-bar{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:12px 0 0;margin-top:14px;border-top:1px solid var(--line);border-bottom:0;background:none;font-size:10px;line-height:1.5}
+.sidebar-bottom .update-bar button{width:100%;padding:8px;margin:0;text-align:center}
+.sidebar-bottom .update-bar span{overflow-wrap:anywhere}
+.scene-form-actions{flex-wrap:wrap}
+
+.portrait-copy .form-grid label:not(:first-child){display:none}

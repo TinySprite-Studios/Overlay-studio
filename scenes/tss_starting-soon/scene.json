@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "type": "starting",
+  "name": "Starting Soon",
+  "title": "Starting soon",
+  "subtitle": "Get comfortable. Something good is loading.",
+  "channel": "YOUR CHANNEL",
+  "social": "Follow along · @yourchannel",
+  "accent": "#e34855",
+  "base": "#10121a",
+  "layout": "horizontal",
+  "style": "aurora",
+  "countdown": 300,
+  "countdownEnd": "We’re getting ready…",
+  "background": "",
+  "overlay": 65,
+  "logo": "",
+  "animate": true
+}

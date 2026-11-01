@@ -95,8 +95,9 @@ function renderScenes(){
 }
 function assetOptions(id,regex,value){const select=$(id);select.replaceChildren(new Option('None',''));for(const file of state.files.filter(f=>f.name.startsWith('assets/')&&f.type==='file'&&regex.test(f.name)))select.append(new Option(file.name.slice(7),file.name));if(value&&![...select.options].some(o=>o.value===value))select.append(new Option(value+' (missing)',value));select.value=value||'';}
 function fillScene(){
-  $('scene-empty').hidden=!!selectedScene;$('scene-form').hidden=!selectedScene;$('scene-code').disabled=!selectedScene;
+  $('scene-empty').hidden=!!selectedScene;$('scene-form').hidden=!selectedScene;$('scene-code').disabled=!selectedScene;$('scene-vertical').disabled=!selectedScene;
   if(!selectedScene)return;
+  $('scene-form').classList.toggle('portrait-copy',!!selectedScene.portrait);$('portrait-help').hidden=!selectedScene.portrait;
   const c=selectedScene.config;assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,c.background);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,c.logo);
   for(const [key,value]of Object.entries(c)){const field=$('scene-form').elements.namedItem(key);if(!field)continue;if(field.type==='checkbox')field.checked=value;else field.value=value;}
   $('scene-apply').textContent='Apply changes';
@@ -159,7 +160,18 @@ action('new-scene',async()=>{if(!(await settleScene()))return;$('scene-template'
 $('scene-template').onchange=()=>$('new-scene-name').value=state.presets.find(p=>p.type===$('scene-template').value).name;
 $('create-scene-form').onsubmit=async event=>{event.preventDefault();try{const preset=state.presets.find(p=>p.type===$('scene-template').value);const result=await call('scene-create',{...preset,name:$('new-scene-name').value,layout:$('new-scene-layout').value});applyState(result.state);await selectScene(result.scene.id);$('scene-dialog').close();showView('scenes');notice('Scene created · customise it on the right');}catch(error){$('scene-error').textContent=error.message;}};
 action('starter-scenes',async()=>{if(!(await settleScene()))return;applyState(await call('scene-starters'));await selectScene(state.scenes[0].id);notice('Starter scenes added. Existing scenes were kept.');});
-action('scene-code',async()=>{if(!selectedScene||!(await settleScene()))return;showView('workspace');await openFile(selectedScene.file);});
+action('scene-code',async()=>{if(!selectedScene||!(await settleScene()))return;showView('workspace');await openFile(selectedScene.portrait?selectedScene.file.replace('index.html','portrait-source.html'):selectedScene.file);});
+action('scene-vertical',async()=>{
+  if(!selectedScene||!(await settleScene()))return;
+  $('vertical-error').textContent='';$('vertical-method').value='fit';
+  try{const css=await call('read','scenes/'+selectedScene.id+'/style.css');if(css.includes('.vertical.type-chatting'))$('vertical-method').value='responsive';}catch{}
+  $('vertical-dialog').showModal();
+});
+$('vertical-form').onsubmit=async event=>{
+  event.preventDefault();const button=$('vertical-form').querySelector('[type=submit]');button.disabled=true;
+  try{await saveAll();const result=await call('scene-vertical',selectedScene.id,$('vertical-method').value);applyState(result.state);await selectScene(result.scene.id);$('vertical-dialog').close();showView('scenes');notice('Vertical copy ready: 1080 ? 1920. Copy its OBS URL to use it.');}
+  catch(error){$('vertical-error').textContent=error.message;}finally{button.disabled=false;}
+};
 action('scene-duplicate',async()=>{if(!selectedScene||!(await settleScene()))return;await saveAll();const result=await call('scene-duplicate',selectedScene.id);applyState(result.state);await selectScene(result.scene.id);notice('Scene duplicated, including custom code');});
 action('scene-delete',async()=>{if(!selectedScene)return;if(!(await call('confirm','Move '+selectedScene.config.name+' to the Recycle Bin? Unsaved edits in this scene will be discarded.')))return;const prefix='scenes/'+selectedScene.id+'/';for(const [name,doc]of documents)if(name.startsWith(prefix)){if(active===name){active=null;editor.setModel(null);}documents.delete(name);doc.model.dispose();}const next=await call('scene-delete',selectedScene.id);selectedScene=null;sceneDirty=false;applyState(next);fillScene();tabs();if(state.scenes.length)await selectScene(state.scenes[0].id);else refresh();notice('Scene moved to the Recycle Bin');});
 $('filter').oninput=renderFiles;

@@ -56,3 +56,26 @@ test('bundled scenes add missing scenes and assets without replacing user change
     assert.equal(fs.readFileSync(path.join(dest,'assets','new.png'),'utf8'),'new artwork');
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('vertical conversion preserves originals, copies dependencies and supports responsive, fit and fill',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'tss-portrait-'));
+ try{
+  const original=scenes.create(root,scenes.defaults('chatting'));
+  const dir=path.join(root,'scenes',original.id),before=fs.readFileSync(path.join(dir,'config.js'),'utf8');
+  fs.writeFileSync(path.join(dir,'custom.js'),'window.custom=true;');
+  for(const method of ['responsive','fit','fill']){
+   const copy=scenes.vertical(root,original.id,method),dest=path.join(root,'scenes',copy.id);
+   assert.equal(copy.config.layout,'vertical');assert.notEqual(copy.id,original.id);
+   assert.equal(fs.readFileSync(path.join(dest,'custom.js'),'utf8'),'window.custom=true;');
+   if(method!=='responsive'){
+    assert.equal(fs.readFileSync(path.join(dest,'portrait-source-config.js'),'utf8'),before);
+    assert.match(fs.readFileSync(path.join(dest,'portrait-source.html'),'utf8'),/portrait-source-config.js/);
+    assert.match(fs.readFileSync(path.join(dest,'portrait-layout.js'),'utf8'),method==='fit'?/Math.min/:/Math.max/);
+    assert.throws(()=>scenes.vertical(root,copy.id,'fit'),/original scene/);
+   }
+  }
+  assert.equal(fs.readFileSync(path.join(dir,'config.js'),'utf8'),before);
+  assert.equal(scenes.read(root,original.id).config.layout,'horizontal');
+  assert.throws(()=>scenes.vertical(root,original.id,'unknown'),/supported/);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});

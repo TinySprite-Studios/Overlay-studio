@@ -1,0 +1,20 @@
+// Scene settings. The Studio visual editor updates this file.
+window.TSS_SCENE = {
+  "version": 1,
+  "type": "live",
+  "name": "Live Overlay",
+  "title": "Now playing",
+  "subtitle": "Welcome to the stream",
+  "channel": "YOUR CHANNEL",
+  "social": "Follow along · @yourchannel",
+  "accent": "#e34855",
+  "base": "#10121a",
+  "layout": "horizontal",
+  "style": "aurora",
+  "countdown": 0,
+  "countdownEnd": "We’re getting ready…",
+  "background": "",
+  "overlay": 65,
+  "logo": "",
+  "animate": true
+};

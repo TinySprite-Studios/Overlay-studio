@@ -5,3 +5,4 @@ studio/artifacts/
 .env
 .env.*
 /assets/previews
+.studio-data/

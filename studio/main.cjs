@@ -143,6 +143,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
     case 'scene-create': {const scene=scenes.create(root,args[0]);return {scene,state:state()};}
     case 'scene-update': {const scene=scenes.update(root,args[0],args[1],args[2]);return {scene,state:state()};}
     case 'scene-duplicate': {const source=scenes.read(root,args[0]);const scene=scenes.create(root,{...source.config,name:source.config.name+' Copy'},source.id);return {scene,state:state()};}
+    case 'scene-vertical': {const scene=scenes.vertical(root,args[0],args[1]);return {scene,state:state()};}
     case 'scene-delete': {await shell.trashItem(scenes.sceneDir(root,args[0]));return state();}
     case 'scene-starters': {scenes.bundled(root,template());scenes.starters(root);return state();}
     case 'import-assets': {

@@ -33,7 +33,7 @@ test('filters unrelated/canceled rewards, accepts rainbow, retains points durati
   assert.equal(activeFor({ id: 'points', reward: { title: 'Paint the Stream' }, user_input: 'red' }).endsAt, PAINT_DURATION);
 });
 test('browser restores original styling at expiry', () => {
-  const styles = new Map([['--frameLight', '#112233']]);
+  const styles = new Map([['--accent', '#112233']]);
   let handler, expiry;
   const context = { window: {}, document: { documentElement: { style: {
     getPropertyValue: key => styles.get(key) || '', setProperty: (key, value) => styles.set(key, value),
@@ -43,10 +43,10 @@ test('browser restores original styling at expiry', () => {
   vm.runInNewContext(fs.readFileSync(require.resolve('../../scripts/tss-paint.js'), 'utf8'), context);
   context.window.TSSPaint.connect({ addEventListener: (_, callback) => { handler = callback; } });
   handler({ data: JSON.stringify({ active: { id: 'a', hex: '#abcdef', endsAt: Date.now() + 3600000 } }) });
-  assert.equal(styles.get('--frameLight'), '#abcdef');
+  assert.equal(styles.get('--accent'), '#abcdef');
   expiry();
-  assert.equal(styles.get('--frameLight'), '#112233');
-  assert.equal(styles.has('--frameGlow'), false);
+  assert.equal(styles.get('--accent'), '#112233');
+  assert.equal(styles.size,1);
 });
 test('manual override applies immediately, preserves paid time and replaces prior override', async () => {
   const { createPaintQueue } = await import('../../scripts/tss-paint.mjs');
