@@ -1,0 +1,64 @@
+name: Build Windows release
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    if: ${{ github.event_name == 'push' || !github.event.release.prerelease }}
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Check release version
+        run: >-
+          node -e "const p=require('./package.json'); if(!/^v\d+\.\d+\.\d+$/.test(process.env.RELEASE_TAG) || process.env.RELEASE_TAG !== 'v'+p.version) throw Error('Release tag must be a stable version matching package.json: v'+p.version);"
+      - run: npm ci
+      - run: npm run test:studio
+      - run: npm run test:updates
+      - run: npm run build:studio
+      - name: Create release for the pushed tag
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release view $env:RELEASE_TAG --json tagName
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --verify-tag --title $env:RELEASE_TAG --generate-notes --draft
+            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
+          }
+      - name: Upload installer and portable release, then enable updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $assets = Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe', '.blockmap' }
+          foreach ($asset in $assets) {
+            gh release upload $env:RELEASE_TAG $asset.FullName --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+          }
+          gh release upload $env:RELEASE_TAG dist/latest.yml --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Update metadata upload failed' }
+      - name: Publish completed tag release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release edit $env:RELEASE_TAG --title $env:RELEASE_TAG --draft=false
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
