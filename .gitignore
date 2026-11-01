@@ -6,3 +6,8 @@ studio/artifacts/
 .env.*
 /assets/previews
 .studio-data/
+
+# Test directories at any depth.
+**/test/
+**/tests/
+**/__tests__/
