@@ -30,6 +30,8 @@ jobs:
       - run: npm ci
       - run: npm run test:studio
       - run: npm run test:updates
+      - run: npm run test:paint
+      - run: npm run test:streamer:app
       - run: npm run build:studio
       - name: Create release for the pushed tag
         if: github.event_name == 'push'

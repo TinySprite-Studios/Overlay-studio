@@ -207,7 +207,7 @@ action('force-apply',async()=>{
 
 function renderUpdate(update){
   const descriptions={idle:'Check for a new Studio release.',checking:'Checking GitHub for updates...',current:'Studio is up to date.',available:'Studio '+update.version+' is available.',downloading:'Downloading update: '+(update.percent||0)+'%',downloaded:'Studio '+update.version+' is ready. Restarting stops the overlay while the update installs.',installing:'Installing update...',error:update.message,disabled:update.message};
-  $('update-status').textContent='v'+update.currentVersion+' ? '+descriptions[update.status];
+  $('update-status').textContent='v'+update.currentVersion+' | '+descriptions[update.status];
   $('update-check').disabled=['disabled','checking','downloading','downloaded','installing','available'].includes(update.status);
   $('update-download').hidden=update.status!=='available';
   $('update-install').hidden=update.status!=='downloaded';
