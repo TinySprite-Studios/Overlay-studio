@@ -30,3 +30,5 @@
 .scene-form-actions{flex-wrap:wrap}
 
 .portrait-copy .form-grid label:not(:first-child){display:none}
+
+@media(max-height:800px){.project-banner{display:flex;justify-content:flex-end}.project-banner>div:first-child{display:none}}

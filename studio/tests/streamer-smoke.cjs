@@ -8,7 +8,7 @@ const {list}=require('../workspace.cjs');
  let app;
  try{
   app=await electron.launch(process.env.TSS_TEST_EXE?{executablePath:process.env.TSS_TEST_EXE,env}:{args:[source],env});
-  const page=await app.firstWindow();await page.waitForFunction(()=>typeof state!=='undefined'&&state&&editor);
+  const page=await app.firstWindow();await page.setViewportSize({width:1100,height:740});await page.waitForFunction(()=>typeof state!=='undefined'&&state&&editor);
   assert.equal(await page.locator('#developer-mode').getAttribute('aria-pressed'),'false');
   for(const selector of ['#files','#filter','.editor-panel','#new-file','#new-folder'])assert.equal(await page.locator(selector).isVisible(),false,selector);
   for(const selector of ['.preview-panel','.test-controls','.manual-colour'])assert.equal(await page.locator(selector).isVisible(),true,selector);
