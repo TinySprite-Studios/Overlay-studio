@@ -1,0 +1,100 @@
+{
+  "name": "tss-overlay",
+  "version": "1.2.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node scripts/tss-twitch.mjs",
+    "setup": "node scripts/tss-twitch.mjs --setup",
+    "preview": "node scripts/offline-preview.mjs",
+    "studio": "electron .",
+    "build:studio": "node studio/build.cjs",
+    "test:studio": "node --test studio/tests/workspace.test.cjs studio/tests/scenes.test.cjs",
+    "test:paint": "node --test studio/tests/paint.test.cjs",
+    "test:studio:app": "node studio/tests/smoke.cjs",
+    "test:office": "node studio/tests/test-office.cjs",
+    "test:updates": "node --test studio/tests/updates.test.cjs",
+    "test:updates:app": "node studio/tests/updates-smoke.cjs",
+    "test:streamer:app": "node studio/tests/streamer-smoke.cjs"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "playwright": "^1.64.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11",
+    "monaco-editor": "^0.57.0"
+  },
+  "main": "studio/main.cjs",
+  "description": "TinySprite desktop workspace for custom stream overlays",
+  "author": "TinySprite",
+  "build": {
+    "appId": "uk.tinysprite.overlaystudio",
+    "productName": "TinySprite Overlay Studio",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "studio/**/*",
+      "!studio/*.test.cjs",
+      "!studio/smoke.cjs",
+      "node_modules/monaco-editor/min/**/*",
+      "package.json",
+      "!studio/artifacts/**/*",
+      "!studio/build.cjs",
+      "!studio/test-office.cjs",
+      "!studio/updates-smoke.cjs",
+      "assets/branding/**/*",
+      "!studio/tests/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".",
+        "to": "overlay-template",
+        "filter": [
+          "config.js",
+          "*.cmd",
+          "!start-studio.cmd",
+          "overlays/**/*",
+          "scripts/**/*",
+          "assets/**/*",
+          "docs/**/*",
+          "scenes/**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signExecutable": false,
+      "icon": "assets/branding/overlay-studio.ico"
+    },
+    "portable": {
+      "artifactName": "TinySprite-Overlay-Studio-${version}.exe"
+    },
+    "nsis": {
+      "artifactName": "TinySprite-Overlay-Studio-Setup-${version}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "TinySprite-Studios",
+      "repo": "overlay-studio"
+    }
+  },
+  "overrides": {
+    "dompurify": "3.4.17"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TinySprite-Studios/overlay-studio.git"
+  }
+}

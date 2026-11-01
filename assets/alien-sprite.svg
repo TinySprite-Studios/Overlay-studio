@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150" fill="none" aria-hidden="true" shape-rendering="crispEdges">
+<style>
+.alien-skin{fill:var(--frameLight,#37ff7d)}.alien-dark{fill:var(--chaser1,#0a4a1d)}.alien-light{fill:#fff;opacity:.38}
+.alien-wave{transform-origin:108px 104px;animation:alien-wave .65s steps(4) infinite alternate}
+.alien-actor,.alien-head,.alien-wave,.alien-left{animation-delay:var(--tss-sprite-elapsed,0ms)}
+@keyframes alien-wave{from{transform:rotate(-12deg)}to{transform:rotate(30deg)}}
+[data-motion="dance"] .alien-actor{transform-origin:75px 140px;animation:alien-dance .7s steps(4) infinite}
+[data-motion="dance"] .alien-left{transform-origin:50px 100px;animation:alien-wave .35s steps(3) infinite alternate}
+[data-motion="jump"] .alien-actor{animation:alien-jump .95s steps(6) infinite}
+[data-motion="look"] .alien-head{animation:alien-look 3s steps(3) infinite}
+[data-motion="look"] .alien-wave{animation:none;transform:rotate(70deg)}
+@keyframes alien-dance{0%,100%{transform:translateX(-5px) rotate(-7deg)}50%{transform:translateX(5px) rotate(7deg)}}
+@keyframes alien-jump{0%,100%{transform:translateY(0)}20%{transform:translateY(3px)}50%{transform:translateY(-26px)}80%{transform:translateY(0)}}
+@keyframes alien-look{0%,100%{transform:translateX(0)}25%,40%{transform:translateX(-7px)}65%,80%{transform:translateX(7px)}}
+@media(prefers-reduced-motion:reduce){.alien-actor,.alien-head,.alien-wave,.alien-left{animation:none!important;transform:none!important}}
+</style>
+<path d="M42 142H108V147H42Z" fill="#090a12" opacity=".3"/>
+<g class="alien-actor">
+<g class="alien-foot alien-foot-left"><path class="alien-dark" d="M49 123H69V140H64V145H43V133H49Z"/><path class="alien-skin" d="M52 128H64V137H59V140H48V136H52Z"/></g>
+<g class="alien-foot alien-foot-right"><path class="alien-dark" d="M83 123H101V133H108V145H86V140H83Z"/><path class="alien-skin" d="M88 128H97V137H103V140H91V137H88Z"/></g>
+<g class="alien-left"><path class="alien-dark" d="M51 92H59V109H51V115H45V123H35V118H31V107H36V99H43V95H51Z"/><path class="alien-skin" d="M47 100H54V108H47V114H41V118H36V108H41V104H47Z"/></g>
+<g class="alien-wave"><path class="alien-dark" d="M99 99H107V91H112V72H117V64H123V69H128V82H133V92H128V100H120V108H109V113H99Z"/><path class="alien-skin" d="M104 102H112V95H117V77H122V86H128V91H123V97H116V103H109V108H104Z"/><path class="alien-light" d="M117 77H122V86H117Z"/></g>
+<path class="alien-dark" d="M59 84H91V89H98V99H103V125H98V133H89V138H62V133H52V125H47V103H52V92H59Z"/>
+<path class="alien-skin" d="M62 89H87V94H93V103H98V122H93V128H86V133H65V128H57V122H52V105H57V96H62Z"/>
+<path class="alien-light" d="M66 100H85V105H90V122H85V127H66V122H61V105H66Z"/>
+<path class="alien-dark" d="M69 110H73V114H78V110H82V118H78V122H73V118H69Z"/>
+<g class="alien-head">
+<path class="alien-dark" d="M41 8H53V3H91V7H102V15H110V29H115V53H109V69H101V79H93V89H83V96H68V90H58V81H50V72H42V61H36V44H33V27H37V16H41Z"/>
+<path class="alien-skin" d="M48 11H59V7H90V12H101V21H108V34H111V51H105V66H97V76H88V85H80V91H70V84H61V75H53V64H46V51H41V31H44V20H48Z"/>
+<path class="alien-light" d="M59 10H89V14H100V24H105V35H98V22H88V17H59Z"/>
+<path d="M42 43H50V48H58V55H66V62H71V74H60V70H53V63H46V55H42ZM108 43H100V48H92V55H84V62H79V74H90V70H97V63H104V55H108Z" fill="#130e19"/>
+<path d="M49 48H53V52H49ZM97 48H101V52H97Z" fill="white" opacity=".7"/>
+<path class="alien-dark" d="M70 80H74V83H78V80H82V85H78V88H74V85H70Z"/>
+</g></g></svg>

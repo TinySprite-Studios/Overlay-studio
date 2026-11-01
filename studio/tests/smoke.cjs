@@ -1,0 +1,64 @@
+const {_electron:electron}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
+const {list}=require('../workspace.cjs');
+(async()=>{
+  const sandbox=fs.mkdtempSync(path.join(os.tmpdir(),'tss-studio-app-')),root=path.join(sandbox,'Project');fs.mkdirSync(root);
+  const source=path.join(__dirname,'../..');for(const file of list(source)){const dest=path.join(root,file.name);if(file.type==='directory')fs.mkdirSync(dest,{recursive:true});else{fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(path.join(source,file.name),dest);}}
+  fs.writeFileSync(path.join(root,'start-twitch.cmd'),'@echo off\r\nnode runner.cjs\r\n');
+  fs.writeFileSync(path.join(root,'runner.cjs'),"console.log('TEST_RUNNER '+process.pid);process.stdin.on('data',data=>console.log('REPLY '+data.toString().trim()));setInterval(()=>{},1000);");
+  const env={...process.env,TSS_STUDIO_TEST_ROOT:root};delete env.ELECTRON_RUN_AS_NODE;
+  const options=process.env.TSS_TEST_EXE?{executablePath:process.env.TSS_TEST_EXE,env}:{args:[source],env};
+  let app;
+  try{
+    app=await electron.launch(options);const page=await app.firstWindow();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.waitForFunction(()=>typeof state!=='undefined'&&state&&editor);
+    await page.locator('#developer-mode').click();
+    await page.waitForFunction(()=>typeof active!=='undefined'&&active==='config.js');
+    assert.equal(await page.locator('.studio-logo').evaluate(img=>img.complete&&img.naturalWidth>0),true);
+    await app.evaluate(({shell})=>{shell.openExternal=async url=>{globalThis.testExternalURL=url;};});
+    await page.locator('#tinysprite-link').click();
+    await page.waitForTimeout(150);
+    assert.equal(await app.evaluate(()=>globalThis.testExternalURL),'https://tinysprite.dev/');
+    assert.equal(await page.locator('.console-panel').isVisible(),false);
+    assert.equal(await page.locator('#force-minutes').inputValue(),'60');
+    await page.locator('#force-colour').selectOption('rgb');
+    await page.locator('#force-minutes').fill('0');await page.locator('#force-apply').click();
+    await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('1 to 1440'));
+    await page.locator('#force-minutes').fill('60');await page.locator('#force-apply').click();
+    await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Start Run overlay first'));
+    fs.mkdirSync(path.join(source,'studio','artifacts'),{recursive:true});
+    await page.screenshot({path:path.join(source,'studio','artifacts','manual-colour.png')});
+
+    const folder=page.locator('#files button[data-path="assets"]');assert.equal(await folder.getAttribute('aria-expanded'),'true');await folder.click();assert.equal(await folder.getAttribute('aria-expanded'),'false');await folder.click();
+    await page.evaluate(()=>openFile('overlays/border.html'));await page.getByRole('button',{name:'Close overlays/border.html',exact:true}).click();assert.equal(await page.evaluate(()=>documents.has('overlays/border.html')),false);
+    await page.evaluate(()=>editor.setValue(editor.getValue()+'\n// unsaved'));
+    await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:2});});await page.getByRole('button',{name:'Close config.js',exact:true}).click();assert.equal(await page.evaluate(()=>documents.has('config.js')),true);
+    await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1});});await page.getByRole('button',{name:'Close config.js',exact:true}).click();await page.waitForFunction(()=>documents.size===0);await page.evaluate(()=>openFile('config.js'));assert.ok(!(await page.evaluate(()=>editor.getValue())).includes('// unsaved'));
+    const original=await page.evaluate(()=>editor.getValue());await page.evaluate(()=>editor.setValue(editor.getValue()+'\n// saved by test'));
+    await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:0});});await page.getByRole('button',{name:'Close config.js',exact:true}).click();await page.waitForFunction(()=>documents.size===0);assert.ok(fs.readFileSync(path.join(root,'config.js'),'utf8').includes('// saved by test'));fs.writeFileSync(path.join(root,'config.js'),original);
+    await page.evaluate(()=>openFile('config.js'));
+    const before=await page.locator('.preview-panel').boundingBox();await page.locator('#enlarge').click();const after=await page.locator('.preview-panel').boundingBox();assert.ok(after.width>before.width*1.3);await page.keyboard.press('Escape');assert.equal(await page.locator('.preview-enlarged').count(),0);
+    await page.locator('#view-scenes').click();await page.locator('#starter-scenes').click();await page.waitForFunction(()=>state.scenes.length===5);
+    await page.locator('#scene-cards [data-scene="tss_live-overlay"]').click();
+    await page.frameLocator('#preview').locator('#title').waitFor();assert.equal(await page.frameLocator('#preview').locator('#title').textContent(),'Now playing');
+    await page.locator('#new-scene').click();await page.locator('#scene-template').selectOption('starting');await page.locator('#new-scene-name').fill('Late Night');await page.locator('#new-scene-layout').selectOption('vertical');await page.locator('#create-scene-form button[type=submit]').click();await page.waitForFunction(()=>selectedScene?.config.name==='Late Night');
+    await page.locator('#scene-form input[name=title]').fill('The TinySprite Show');await page.locator('#scene-form input[name=countdown]').fill('90');await page.locator('#scene-apply').click();await page.waitForFunction(()=>!sceneDirty&&selectedScene.config.title==='The TinySprite Show');
+    await page.frameLocator('#preview').locator('body.vertical').waitFor();assert.equal(await page.frameLocator('#preview').locator('#title').textContent(),'The TinySprite Show');
+    await page.locator('#copy-url').click();const obsURL=await app.evaluate(({clipboard})=>clipboard.readText());assert.ok(obsURL.endsWith('/scenes/tss_late-night/index.html'));assert.equal((await fetch(obsURL)).status,200);
+    await page.locator('#scene-duplicate').click();await page.waitForFunction(()=>selectedScene?.config.name==='Late Night Copy');assert.equal(await page.locator('#scene-cards .scene-card').count(),7);
+    await page.locator('#scene-code').click();await page.waitForFunction(()=>view==='workspace'&&active?.endsWith('/index.html'));
+    await page.locator('#new-folder').click();await page.locator('#filename').fill('assets/backgrounds/empty');await page.locator('#create-file-form button[type=submit]').click();await page.locator('#file-dialog').waitFor({state:'hidden'});assert.ok(fs.statSync(path.join(root,'assets/backgrounds/empty')).isDirectory());
+    await page.locator('#new-file').click();await page.locator('#filename').fill('scenes/custom/extra.html');await page.locator('#create-file-form button[type=submit]').click();await page.waitForFunction(()=>active==='scenes/custom/extra.html');
+    await page.keyboard.press('Control+w');await page.waitForFunction(()=>!documents.has('scenes/custom/extra.html'));
+    const asset=path.join(source,'assets','tss_blue_128.png');await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},asset);await page.locator('#import-assets').click();await page.waitForFunction(()=>state.files.some(f=>f.name==='assets/tss_blue_128-2.png'));
+    const exported=path.join(sandbox,'Export');fs.mkdirSync(exported);await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},exported);await page.locator('#export').click();await page.waitForFunction(()=>document.querySelector('#notice').textContent.startsWith('Project exported'));assert.ok(fs.existsSync(path.join(exported,'scenes/tss_late-night/index.html')));assert.ok(!fs.existsSync(path.join(exported,'.studio-data')));
+    const fresh=path.join(sandbox,'Fresh');fs.mkdirSync(fresh);await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},fresh);await page.locator('#new-project').click();await page.waitForFunction(folder=>state.root===folder&&state.scenes.length===5,fresh);assert.ok(fs.existsSync(path.join(fresh,'start-twitch.cmd')));
+    await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},root);await page.locator('#open').click();await page.waitForFunction(folder=>state.root===folder,root);
+    await page.locator('#run').click();await page.waitForFunction(()=>document.querySelector('#console').textContent.includes('TEST_RUNNER'));assert.equal(await page.evaluate(()=>view),'console');assert.equal(await page.locator('#workarea').isVisible(),false);
+    const pid=Number((await page.locator('#console').textContent()).match(/TEST_RUNNER (\d+)/)[1]);await page.locator('#console-input').fill('hello');await page.locator('#console-input').press('Enter');await page.waitForFunction(()=>document.querySelector('#console').textContent.includes('REPLY hello'));await page.locator('#stop').click();await page.waitForFunction(()=>!running);assert.throws(()=>process.kill(pid,0));
+    await page.locator('#view-scenes').click();await page.locator('#scene-cards [data-scene="tss_late-night"]').click();
+    await page.frameLocator('#preview').locator('#title').waitFor();fs.mkdirSync(path.join(source,'studio','artifacts'),{recursive:true});await page.screenshot({path:path.join(source,'studio','artifacts','scenes.png')});
+    await page.locator('#enlarge').click();await page.screenshot({path:path.join(source,'studio','artifacts','enlarged.png')});await page.keyboard.press('Escape');
+    assert.deepEqual(errors,[]);console.log('PASS: folder tree, tab Save/Discard/Cancel, enlarged preview, scene templates/settings/duplication, vertical preview, OBS serving, nested files/folders, asset import, export, separate console, runner input and shutdown.');
+  }finally{if(app)await app.close();fs.rmSync(sandbox,{recursive:true,force:true});}
+})().catch(error=>{console.error(error);process.exitCode=1;});

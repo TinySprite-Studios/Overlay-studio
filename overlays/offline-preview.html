@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TinySprite • Offline playground</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10151b;color:#eef5fa;font:16px system-ui}main{max-width:1500px;margin:auto;padding:24px}h1{margin:0 0 8px}p{color:#aebdca}section{background:#1a232d;border:1px solid #344455;border-radius:14px;padding:18px;margin:18px 0}label{display:inline-flex;gap:8px;align-items:center;margin:8px}input,select,button{font:inherit;padding:10px;border-radius:7px;border:1px solid #52677c;background:#253545;color:white}button{cursor:pointer;margin:5px}button:hover{background:#37546a}button:disabled{opacity:.4;cursor:wait}.stage{position:relative;width:100%;aspect-ratio:16/9;background:repeating-conic-gradient(#28313b 0% 25%,#222a33 0% 50%) 0/32px 32px;overflow:hidden}iframe{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:top left}#status{color:#8af5b5}small{color:#aebdca}
+</style></head><body><main>
+<h1>TinySprite offline playground</h1><p>Simulated events only · no Twitch connection · no channel points spent · no saved activity changed</p>
+<section><label>Viewer name <input id="name" value="PreviewViewer" maxlength="150"></label><label>Sprite message <input id="message" maxlength="100" placeholder="Optional · up to 100 characters"></label><label>Canvas <select id="layout"><option value="wide">Horizontal</option><option value="tall">Vertical</option></select></label><button id="reset">Reset preview</button>
+<div id="controls"><button data-kind="follow">Follow</button><button data-kind="sub">Subscribe</button><button data-kind="gift">Gifted sub</button><button data-kind="resub">Resubscribe</button><button data-kind="cheer">Cheer · 199 Bits</button><button data-kind="anonymous">Anonymous cheer</button><button data-kind="donation">Donation · £5</button><br>
+<label>Paint colour <select id="colour"><option>purple</option><option>red</option><option>orange</option><option>yellow</option><option>green</option><option>blue</option><option>pink</option><option>cyan</option><option>white</option><option value="rgb">RGB / Rainbow</option></select></label><label>Paint duration <select id="duration"><option value="10">10 seconds</option><option value="120">2 minutes (live duration)</option></select></label><button data-kind="paint">Paint the Stream</button><button data-kind="summon">Summon (random)</button><button data-kind="dance">Dance</button><button data-kind="jump">Jump</button><button data-kind="look">Look around</button><button data-kind="tomato">Throw a Tomato</button><hr><button data-kind="feed">Feed Sprite</button><button data-kind="hydrate">Hydrate Sprite</button><button data-kind="time">Advance 10 minutes</button><button data-kind="newstream">New stream / Full reset</button></div>
+<p id="status" role="status">Loading preview...</p><small>Animation buttons queue 15-second visits. His colour follows the frame, including paint and its expiry. Alerts and rewards queue separately. Reset clears all pending previews. The vertical layout uses his existing settings, which hide the activity boxes.</small></section>
+<div class="stage" id="stage"><iframe id="preview" title="Offline overlay preview" src="border.html"></iframe></div>
+</main><script type="module">
+import {createCare} from '../scripts/tss-care.mjs';
+let careOffset=0;
+const care=createCare({}, {now:()=>Date.now()+careOffset,publish:state=>send('care',state)});
+setInterval(()=>care.tick(),1000);
+
+const frame=document.getElementById('preview'), stage=document.getElementById('stage'), status=document.getElementById('status');
+const colours={red:'#ff4545',orange:'#ff952e',yellow:'#ffe34d',green:'#37ff7d',blue:'#479cff',purple:'#b56cff',pink:'#ff71cb',cyan:'#42edff',white:'#ffffff',rgb:'#ff4545'};
+let activity={}, paintEnd=0, summonEnd=0, timers=[], ready=false;
+function send(type,data){frame.contentWindow.postMessage({type,data},location.origin)}
+function scale(){const tall=document.getElementById('layout').value==='tall',w=tall?1080:1920,h=tall?1920:1080;stage.style.aspectRatio=w+'/'+h;frame.style.width=w+'px';frame.style.height=h+'px';frame.style.transform='scale('+stage.clientWidth/w+')'}
+function reset(){ready=false;timers.forEach(clearTimeout);timers=[];activity={};paintEnd=summonEnd=0;document.querySelectorAll('[data-kind]').forEach(b=>b.disabled=true);status.textContent='Loading preview...';frame.src='border.html?offline='+Date.now()}
+frame.onload=()=>{send('care',care.snapshot());ready=true;document.querySelectorAll('[data-kind]').forEach(b=>b.disabled=false);scale();status.textContent='Ready — all events stay in this preview.'};
+document.getElementById('reset').onclick=reset;document.getElementById('layout').onchange=reset;new ResizeObserver(scale).observe(stage);
+document.getElementById('controls').onclick=e=>{const kind=e.target.dataset.kind;if(!kind||!ready)return;const name=document.getElementById('name').value.trim()||'PreviewViewer',now=Date.now();
+ if(kind==='time'){careOffset+=600000;care.tick();status.textContent='Advanced care clock by 10 minutes.';return;}
+ if(kind==='newstream'){careOffset=0;care.reset();status.textContent='New stream: all meters full.';return;}
+ if(kind==='feed'||kind==='hydrate'||kind==='summon'){care.add({id:crypto.randomUUID(),user_name:name,reward:{title:kind==='feed'?'Feed Sprite':kind==='hydrate'?'Hydrate Sprite':'Summon Sprite'}});}
+ const motion={summon:['wave','dance','jump','look'][Math.floor(Math.random()*4)],dance:'dance',jump:'jump',look:'look',tomato:'wave',feed:'wave',hydrate:'wave'}[kind];
+ if(kind==='paint'||motion){
+  const paint=kind==='paint',duration=paint?Number(document.getElementById('duration').value)*1000:15000;
+  const startsAt=Math.max(now,paint?paintEnd:summonEnd),endsAt=startsAt+duration,id=String(now)+Math.random();
+  if(paint)paintEnd=endsAt;else summonEnd=endsAt;
+  const colour=document.getElementById('colour').value;
+  const message=Array.from(document.getElementById('message').value.trim()).slice(0,100).join('');
+  const active={id,name,message,motion,effect:({tomato:'tomato',feed:'feed',hydrate:'hydrate'})[kind]||'summon',item:['feed','hydrate'].includes(kind)?care.snapshot().lastGift?.item:'',target:{x:Math.random(),y:Math.random()},startsAt,endsAt,...(paint?{colour,hex:colours[colour]}:{})};
+  timers.push(setTimeout(()=>{if(motion)send('motion',{motion});send(paint?'paint':'summon',{active});},startsAt-now));
+  status.textContent=(paint?'Paint':'Sprite')+' queued for '+name+(startsAt>now?' — starts in '+Math.ceil((startsAt-now)/1000)+'s':'.');return;
+ }
+ const type=['gift','resub'].includes(kind)?'sub':kind==='anonymous'?'cheer':kind;
+ const who=kind==='anonymous'?'Anonymous':name;
+ const detail={gift:'Gifted subscription',resub:'12 months subscribed',cheer:'199 Bits',anonymous:'199 Bits',donation:'£5.00',follow:'Welcome to the community',sub:'Welcome to the community'}[kind];
+ send('alert',{kind:type,name:who,detail});activity[{follow:'follower',sub:'subscriber',cheer:'cheerer',donation:'donator'}[type]]=who;send('message',activity);status.textContent='Queued '+kind+' alert for '+who+'.';
+};scale();care.reset();reset();
+</script></body></html>

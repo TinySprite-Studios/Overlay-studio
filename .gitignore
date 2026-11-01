@@ -1,0 +1,7 @@
+node_modules/
+dist/
+studio/artifacts/
+*.log
+.env
+.env.*
+/assets/previews

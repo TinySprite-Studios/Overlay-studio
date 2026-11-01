@@ -1,0 +1,19 @@
+window.TSS_SCENE = {
+  "version": 1,
+  "type": "brb",
+  "name": "Gaming Office ? Be Right Back",
+  "title": "Be Right Back",
+  "subtitle": "McKlean will be back shortly. The cat is in charge.",
+  "channel": "johnmcklean",
+  "social": "",
+  "accent": "#37ff7d",
+  "base": "#07110d",
+  "layout": "horizontal",
+  "style": "aurora",
+  "countdown": 0,
+  "countdownEnd": "We\u2019re getting ready\u2026",
+  "background": "assets/tss_gamers_office_brb.png",
+  "overlay": 0,
+  "logo": "",
+  "animate": true
+};
