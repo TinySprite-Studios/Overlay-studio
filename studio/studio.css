@@ -26,6 +26,7 @@
 .streamer-mode .project-banner,.streamer-mode #scene-library,.streamer-mode .workspace-bar,.streamer-mode .update-bar{flex-shrink:0}
 .sidebar-bottom .update-bar{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:12px 0 0;margin-top:14px;border-top:1px solid var(--line);border-bottom:0;background:none;font-size:10px;line-height:1.5}
 .sidebar-bottom .update-bar button{width:100%;padding:8px;margin:0;text-align:center}
+.sidebar-bottom .update-bar .primary{color:var(--text);font-size:12px}
 .sidebar-bottom .update-bar span{overflow-wrap:anywhere}
 .scene-form-actions{flex-wrap:wrap}
 
