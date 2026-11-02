@@ -20,7 +20,7 @@ async function serve(getRoot, port=0, offline=false) {
         const sceneFile = new URL(req.url, 'http://localhost').searchParams.get('scene');
         const scene = scenes.scenes(getRoot()).find(scene => scene.file === sceneFile ||
           (scene.external && sceneFile === 'overlay-vertical.html'))?.config;
-        const settings = {scene:{file:scene?.audio || '',volume:scene?.audioVolume ?? 100},
+        const settings = {scene:{file:scene?.audio || '',volume:scene?.audioVolume ?? 100,delay:scene?.audioDelay ?? 0},
           alerts:alertSounds(events.read(getRoot()).settings.sounds),offline};
         const script = 'window.TSS_STUDIO_AUDIO = ' + JSON.stringify(settings).replace(/</g, '\\u003c') + ';\n' +
           fs.readFileSync(path.join(__dirname, 'audio-runtime.js'), 'utf8');

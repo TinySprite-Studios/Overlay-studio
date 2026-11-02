@@ -18,9 +18,11 @@ function normalize(value) {
   const background = text('background',500);
   const logo = text('logo',500);
   const audio = sound({file:value.audio, volume:value.audioVolume});
+  const audioDelay = Number(value.audioDelay ?? 0);
+  if (!Number.isFinite(audioDelay) || audioDelay < 0 || audioDelay > 3600) throw Error('Music delay must be between 0 and 3600 seconds.');
   if (logo && (!logo.startsWith('assets/') || logo.split('/').some(p=>p.startsWith('.')) || !/\.(png|jpe?g|webp|gif|svg)$/i.test(logo))) throw Error('Choose an imported logo from assets.');
   if (background && (!background.startsWith('assets/') || background.split('/').some(p=>p.startsWith('.')) || !/\.(png|jpe?g|webp|gif|svg|mp4|webm)$/i.test(background))) throw Error('Choose an imported image or video from assets.');
-  return {audio:audio.file,audioVolume:audio.volume,version:1,type:value.type,name:text('name',80).trim()||presets[value.type].name,title:text('title'),subtitle:text('subtitle',300),channel:text('channel',80),social:text('social',160),accent:colour('accent','#e34855'),base:colour('base','#10121a'),layout:value.layout==='vertical'?'vertical':'horizontal',style:['aurora','grid','minimal'].includes(value.style)?value.style:'aurora',countdown:Math.max(0,Math.min(86400,Math.floor(Number(value.countdown)||0))),countdownEnd:text('countdownEnd',120)||'We’re getting ready…',background,overlay:Math.max(0,Math.min(100,Number(value.overlay) || 0)),logo:text('logo',500),animate:value.animate!==false};
+  return {audioDelay,audio:audio.file,audioVolume:audio.volume,version:1,type:value.type,name:text('name',80).trim()||presets[value.type].name,title:text('title'),subtitle:text('subtitle',300),channel:text('channel',80),social:text('social',160),accent:colour('accent','#e34855'),base:colour('base','#10121a'),layout:value.layout==='vertical'?'vertical':'horizontal',style:['aurora','grid','minimal'].includes(value.style)?value.style:'aurora',countdown:Math.max(0,Math.min(86400,Math.floor(Number(value.countdown)||0))),countdownEnd:text('countdownEnd',120)||'We’re getting ready…',background,overlay:Math.max(0,Math.min(100,Number(value.overlay) || 0)),logo:text('logo',500),animate:value.animate!==false};
 }
 function defaults(type) {return normalize({type,...presets[type],channel:'YOUR CHANNEL',social:'Follow along · @yourchannel',accent:'#e34855',base:'#10121a',style:'aurora',overlay:65,animate:true});}
 function sceneDir(root,id) {
@@ -34,7 +36,7 @@ function liveScene(root) {
   const match=text.match(/^window\.TSS_THEME = (.+);\s*$/s);
   const theme=match?JSON.parse(match[1]):{};
   return {id:'tss_project-live',file:'overlay-horizontal.html',external:true,
-    config:normalize({...defaults('live'),accent:theme.accent||'#37ff7d',audio:theme.audio,audioVolume:theme.audioVolume}),
+    config:normalize({...defaults('live'),accent:theme.accent||'#37ff7d',audio:theme.audio,audioVolume:theme.audioVolume,audioDelay:theme.audioDelay}),
     revision:crypto.createHash('sha256').update(text).digest('hex')};
 }
 function read(root,id) {
@@ -89,7 +91,7 @@ function update(root,id,input,expected){
     if(current.revision!==expected)throw Error('Live settings changed on disk. Reload before applying.');
     const config=normalize(input);
     checkFile(root, {file:config.audio});
-    fs.writeFileSync(resolveFile(root,'tss-theme.js'),'window.TSS_THEME = '+JSON.stringify({accent:config.accent,audio:config.audio,audioVolume:config.audioVolume})+';\n');
+    fs.writeFileSync(resolveFile(root,'tss-theme.js'),'window.TSS_THEME = '+JSON.stringify({accent:config.accent,audio:config.audio,audioVolume:config.audioVolume,audioDelay:config.audioDelay})+';\n');
     return liveScene(root);
   }
   const current=read(root,id),dir=sceneDir(root,id);if(current.revision!==expected)throw Error('Scene settings changed on disk. Reload the scene before applying settings.');const config=normalize(input);checkFile(root,{file:config.audio});writeConfig(dir,config);return read(root,id);}

@@ -295,19 +295,26 @@ function renderEventTests(settings){
 
 const audioExtensions=/\.(mp3|mp4|wav|ogg|webm)$/i;
 const alertSoundLabels={follow:'Follower',sub:'Subscriber',cheer:'Bits',donation:'Donation'};
-let soundPreview;
+let soundPreview,soundPreviewTimer;
 function stopSoundPreview(){
+  clearTimeout(soundPreviewTimer);soundPreviewTimer=null;
   soundPreview?.pause();soundPreview=null;
   const frame=$('preview');
   if(frame?.getAttribute('src'))frame.contentWindow.postMessage({type:'audio-stop'},new URL(frame.src).origin);
 }
-async function previewSound(file,volume){
+async function previewSound(file,volume,delay=0){
   stopSoundPreview();
   if(!file)throw Error('Choose a sound first.');
+  delay=Number(delay);if(!Number.isFinite(delay)||delay<0||delay>3600)throw Error('Music delay must be between 0 and 3600 seconds.');
   const player=new Audio(state.previewURL+'/'+file.split('/').map(encodeURIComponent).join('/'));
   soundPreview=player;player.volume=Math.max(0,Math.min(1,Number(volume)/100));
-  try{await player.play();if(soundPreview===player)notice('Playing sound preview');}
-  catch(error){if(soundPreview!==player||error.name==='AbortError')return;stopSoundPreview();throw Error('Could not play this file. Check that it contains supported audio.');}
+  const start=async()=>{
+    soundPreviewTimer=null;
+    try{await player.play();if(soundPreview===player)notice('Playing sound preview');}
+    catch(error){if(soundPreview!==player||error.name==='AbortError')return;stopSoundPreview();throw Error('Could not play this file. Check that it contains supported audio.');}
+  };
+  if(delay>0){notice('Sound preview starts in '+delay+' seconds');soundPreviewTimer=setTimeout(()=>start().catch(report),delay*1000);}
+  else await start();
 }
 function renderAlertSounds(sounds){
   $('alert-sounds').replaceChildren();
@@ -326,6 +333,6 @@ function renderAlertSounds(sounds){
 function refreshSoundOptions(){
   for(const kind of Object.keys(alertSoundLabels)){const select=$('sound-'+kind);if(select)assetOptions(select.id,audioExtensions,select.value);}
 }
-action('scene-audio-test',()=>previewSound($('scene-audio').value,$('scene-audio-volume').value));
+action('scene-audio-test',()=>previewSound($('scene-audio').value,$('scene-audio-volume').value,$('scene-audio-delay').value));
 for(const button of document.querySelectorAll('[data-stop-audio]'))button.onclick=stopSoundPreview;
 window.addEventListener('pagehide',stopSoundPreview);

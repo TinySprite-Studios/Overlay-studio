@@ -6,9 +6,10 @@
   const studioPreview = offline || new URLSearchParams(location.search).has('studio');
   const players = new Set();
   const queue = [];
-  let alertPlaying = false, active = false, visible = true, playingScene = false, generation = 0;
+  let alertPlaying = false, active = false, visible = true, playingScene = false, generation = 0, musicTimer;
 
   function stop() {
+    clearTimeout(musicTimer);
     generation++;
     queue.length = 0;
     alertPlaying = false;
@@ -62,7 +63,10 @@
       if (next === playingScene) return;
       playingScene = next;
       stop();
-      if (next) play(scene);
+      if (next) {
+        if (scene.delay > 0) musicTimer = setTimeout(() => { if (playingScene) play(scene); }, scene.delay * 1000);
+        else play(scene);
+      }
     };
     // OBS keeps inactive browser sources loaded. Only an explicit activation
     // may start audio; page load and Studio Mode preview are not activation.
