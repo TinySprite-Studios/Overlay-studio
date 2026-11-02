@@ -80,7 +80,7 @@ function scale(){const [w,h]=dimensions(),wrap=$('stage').parentElement;const fa
 function refresh(){
   if(!state)return;const live=$('preview-mode').value==='live',name=$('preview-file').value||'overlays/overlay-horizontal.html';
   $('preview').src=(live?state.obsURL:state.previewURL)+'/'+name.split('/').map(encodeURIComponent).join('/')+'?studio='+Date.now();
-  $('preview-label').textContent=live?'OBS OUTPUT':'LOCAL PREVIEW';$('live-hint').hidden=!live;document.querySelectorAll('[data-alert]').forEach(b=>b.disabled=live);scale();
+  $('preview-label').textContent=live?'OBS OUTPUT':'LOCAL PREVIEW';$('live-hint').hidden=!live;document.querySelectorAll('[data-alert], [data-test-event]').forEach(b=>b.disabled=live);scale();
 }
 function setRunning(value){running=value;$('run').disabled=value;$('stop').disabled=!value;$('run-status').textContent=value?'● Runner active':'● Runner stopped';$('run-status').classList.toggle('running',value);$('console-input').disabled=!value;}
 async function changeProject(method){
@@ -235,7 +235,7 @@ document.getElementById('tinysprite-link').addEventListener('click',event=>{even
 
 let eventsDirty=false,eventsRevision;
 function renderEvents(){
-  const settings=state.events.settings;eventsRevision=state.events.revision;
+  const settings=state.events.settings;eventsRevision=state.events.revision;renderEventTests(settings);
   $('event-settings').replaceChildren();$('event-colours').replaceChildren();
   for(const event of settings.events){
     const label=document.createElement('label');label.textContent=event.canonical+' \u00b7 '+(event.trigger==='bits'?'Bits Power-up':'Channel points');
@@ -263,3 +263,30 @@ async function saveEvents(){
 }
 $('events-form').oninput=()=>{eventsDirty=true;$('events-save').textContent='Apply changes \u2022';};
 $('events-form').onsubmit=event=>{event.preventDefault();saveEvents().catch(report);};
+
+function renderEventTests(settings){
+  const controls=$('event-tests');
+  controls.replaceChildren();
+  const events=settings.events.filter(event=>['paint','paint-pro','summon','feed','hydrate','tomato'].includes(event.id));
+  controls.hidden=!events.length;
+  const label=document.createElement('span');label.textContent='TEST EVENT';controls.append(label);
+  const colour=document.createElement('select');colour.setAttribute('aria-label','Test paint colour');
+  for(const name of Object.keys(settings.colours))colour.append(new Option(name,name));
+  colour.append(new Option('Rainbow','rgb'));colour.value=settings.colours.purple?'purple':colour.options[0].value;
+  if(events.some(event=>event.id.startsWith('paint')))controls.append(colour);
+  for(const event of events){
+    const button=document.createElement('button');button.textContent=event.name;button.dataset.testEvent=event.id;
+    button.disabled=$('preview-mode').value==='live';button.title='Test in local preview';
+    button.onclick=()=>{
+      if($('preview-mode').value==='live')return;
+      const paint=event.id.startsWith('paint'),startsAt=Date.now();
+      const active={id:crypto.randomUUID(),name:'TinySprite',startsAt,endsAt:startsAt+(paint?10000:15000)};
+      if(paint)Object.assign(active,{colour:colour.value,hex:settings.colours[colour.value]||'#ff4545'});
+      else Object.assign(active,{motion:'wave',effect:event.id,target:{x:Math.random(),y:Math.random()}});
+      $('preview').contentWindow.postMessage({type:paint?'paint':'summon',data:{active}},state.previewURL);
+      notice('Preview event sent: '+event.name);
+    };
+    controls.append(button);
+  }
+  requestAnimationFrame(scale);
+}

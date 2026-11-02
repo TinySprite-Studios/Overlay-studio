@@ -34,3 +34,5 @@
 @media(max-height:800px){.project-banner{display:flex;justify-content:flex-end}.project-banner>div:first-child{display:none}}
 
 #events-panel{display:none;overflow:auto;flex:1;min-height:0}main[data-view=events] #events-panel{display:block}main[data-view=events] .workarea,main[data-view=events] .banner-actions{display:none}#events-form{padding:20px}#events-form h2{font-size:18px}#events-form h3{font-size:13px;margin-top:24px}#events-form .scene-form-actions{margin-top:20px}#events-form .form-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}.live-overlay .form-grid label:not(:has([name=accent])){display:none}.live-overlay .field-help,.live-overlay .scene-form-actions button:not([type=submit]){display:none}
+
+#event-tests[hidden]{display:none}#event-tests select{font-size:10px;padding:6px}.test-controls{flex-shrink:0}
