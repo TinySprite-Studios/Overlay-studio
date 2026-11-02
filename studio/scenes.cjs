@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {resolveFile, list} = require('./workspace.cjs');
+const {sound, checkFile} = require('./audio.cjs');
 const presets = {
   starting:{name:'Starting Soon',title:'Starting soon',subtitle:'Get comfortable. Something good is loading.',countdown:300},
   brb:{name:'Be Right Back',title:'Be right back',subtitle:'Taking a tiny break. Stay a little longer.',countdown:0},
@@ -16,9 +17,10 @@ function normalize(value) {
   const colour = (key, fallback) => /^#[0-9a-f]{6}$/i.test(value[key]) ? value[key] : fallback;
   const background = text('background',500);
   const logo = text('logo',500);
+  const audio = sound({file:value.audio, volume:value.audioVolume});
   if (logo && (!logo.startsWith('assets/') || logo.split('/').some(p=>p.startsWith('.')) || !/\.(png|jpe?g|webp|gif|svg)$/i.test(logo))) throw Error('Choose an imported logo from assets.');
   if (background && (!background.startsWith('assets/') || background.split('/').some(p=>p.startsWith('.')) || !/\.(png|jpe?g|webp|gif|svg|mp4|webm)$/i.test(background))) throw Error('Choose an imported image or video from assets.');
-  return {version:1,type:value.type,name:text('name',80).trim()||presets[value.type].name,title:text('title'),subtitle:text('subtitle',300),channel:text('channel',80),social:text('social',160),accent:colour('accent','#e34855'),base:colour('base','#10121a'),layout:value.layout==='vertical'?'vertical':'horizontal',style:['aurora','grid','minimal'].includes(value.style)?value.style:'aurora',countdown:Math.max(0,Math.min(86400,Math.floor(Number(value.countdown)||0))),countdownEnd:text('countdownEnd',120)||'We’re getting ready…',background,overlay:Math.max(0,Math.min(100,Number(value.overlay) || 0)),logo:text('logo',500),animate:value.animate!==false};
+  return {audio:audio.file,audioVolume:audio.volume,version:1,type:value.type,name:text('name',80).trim()||presets[value.type].name,title:text('title'),subtitle:text('subtitle',300),channel:text('channel',80),social:text('social',160),accent:colour('accent','#e34855'),base:colour('base','#10121a'),layout:value.layout==='vertical'?'vertical':'horizontal',style:['aurora','grid','minimal'].includes(value.style)?value.style:'aurora',countdown:Math.max(0,Math.min(86400,Math.floor(Number(value.countdown)||0))),countdownEnd:text('countdownEnd',120)||'We’re getting ready…',background,overlay:Math.max(0,Math.min(100,Number(value.overlay) || 0)),logo:text('logo',500),animate:value.animate!==false};
 }
 function defaults(type) {return normalize({type,...presets[type],channel:'YOUR CHANNEL',social:'Follow along · @yourchannel',accent:'#e34855',base:'#10121a',style:'aurora',overlay:65,animate:true});}
 function sceneDir(root,id) {
@@ -32,7 +34,7 @@ function liveScene(root) {
   const match=text.match(/^window\.TSS_THEME = (.+);\s*$/s);
   const theme=match?JSON.parse(match[1]):{};
   return {id:'tss_project-live',file:'overlay-horizontal.html',external:true,
-    config:normalize({...defaults('live'),accent:theme.accent||'#37ff7d'}),
+    config:normalize({...defaults('live'),accent:theme.accent||'#37ff7d',audio:theme.audio,audioVolume:theme.audioVolume}),
     revision:crypto.createHash('sha256').update(text).digest('hex')};
 }
 function read(root,id) {
@@ -67,6 +69,7 @@ function writeConfig(dir,config) {
 }
 function create(root,input,sourceId) {
   const config=normalize(input);
+  checkFile(root, {file:config.audio});
   const slug=config.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'scene';
   let id='tss_'+slug, index=2;
   while(fs.existsSync(sceneDir(root,id)))id='tss_'+slug+'-'+index++;
@@ -85,10 +88,11 @@ function update(root,id,input,expected){
     const current=liveScene(root);
     if(current.revision!==expected)throw Error('Live settings changed on disk. Reload before applying.');
     const config=normalize(input);
-    fs.writeFileSync(resolveFile(root,'tss-theme.js'),'window.TSS_THEME = '+JSON.stringify({accent:config.accent})+';\n');
+    checkFile(root, {file:config.audio});
+    fs.writeFileSync(resolveFile(root,'tss-theme.js'),'window.TSS_THEME = '+JSON.stringify({accent:config.accent,audio:config.audio,audioVolume:config.audioVolume})+';\n');
     return liveScene(root);
   }
-  const current=read(root,id),dir=sceneDir(root,id);if(current.revision!==expected)throw Error('Scene settings changed on disk. Reload the scene before applying settings.');writeConfig(dir,normalize(input));return read(root,id);}
+  const current=read(root,id),dir=sceneDir(root,id);if(current.revision!==expected)throw Error('Scene settings changed on disk. Reload the scene before applying settings.');const config=normalize(input);checkFile(root,{file:config.audio});writeConfig(dir,config);return read(root,id);}
 function bundled(root, source) {
   if(path.resolve(root)===path.resolve(source))return;
   const files=list(source);

@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const {resolveFile} = require('./workspace.cjs');
+const {alertSounds, checkFile} = require('./audio.cjs');
 const filename = 'tss-events.json';
 const revision = text => crypto.createHash('sha256').update(text).digest('hex');
 
@@ -27,7 +28,9 @@ function update(root, input, expected) {
     if (!/^#[0-9a-f]{6}$/i.test(input.colours?.[key])) throw Error('Choose a valid colour for ' + key + '.');
     colours[key] = input.colours[key];
   }
-  const settings = {...current.settings, events, colours};
+  const sounds = alertSounds(input.sounds ?? current.settings.sounds);
+  for (const value of Object.values(sounds)) checkFile(root, value);
+  const settings = {...current.settings, events, colours, sounds};
   fs.writeFileSync(resolveFile(root, filename), JSON.stringify(settings, null, 2) + '\n');
   return read(root);
 }

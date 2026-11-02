@@ -62,9 +62,9 @@ window.canCloseStudio=async()=>{
   const choice=await call('resolve-close','your project');if(choice===2)return false;if(choice===0)await saveAll();return true;
 };
 function showView(next){
-  view=next;document.querySelector('main').dataset.view=next;
+  stopSoundPreview();view=next;document.querySelector('main').dataset.view=next;
   for(const value of ['workspace','scenes','events','console']){$('view-'+value).classList.toggle('active',value===next);$('view-'+value).setAttribute('aria-selected',String(value===next));}
-  const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],events:['Stream events.','Customise your channel rewards and event colours.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
+  const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],events:['Stream events.','Customise your channel rewards, colours and alert sounds.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
   $('page-title').textContent=titles[next][0];$('page-description').textContent=titles[next][1];
   if(next==='console'){unread=0;$('console-count').hidden=true;$('console').scrollTop=$('console').scrollHeight;}
   if(next==='scenes'&&!selectedScene&&state?.scenes.length)selectScene(state.scenes[0].id).catch(report);
@@ -85,7 +85,7 @@ function refresh(){
 function setRunning(value){running=value;$('run').disabled=value;$('stop').disabled=!value;$('run-status').textContent=value?'● Runner active':'● Runner stopped';$('run-status').classList.toggle('running',value);$('console-input').disabled=!value;}
 async function changeProject(method){
   if(switching)return;if(dirty()){const choice=await call('resolve-close','your project before switching');if(choice===2)return;if(choice===0)await saveAll();}
-  switching=true;try{const next=await call(method);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;eventsDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();if(method==='new-project'){showView('scenes');await selectScene(next.scenes[0].id);}notice('Opened '+next.name);}finally{switching=false;}
+  stopSoundPreview();switching=true;try{const next=await call(method);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;eventsDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();if(method==='new-project'){showView('scenes');await selectScene(next.scenes[0].id);}notice('Opened '+next.name);}finally{switching=false;}
 }
 function renderScenes(){
   $('scene-count').textContent=state.scenes.length;$('scene-cards').replaceChildren();
@@ -99,7 +99,7 @@ function fillScene(){
   if(!selectedScene)return;
   $('scene-form').classList.toggle('live-overlay',!!selectedScene.external);
   $('scene-form').classList.toggle('portrait-copy',!!selectedScene.portrait);$('portrait-help').hidden=!selectedScene.portrait;
-  const c=selectedScene.config;assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,c.background);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,c.logo);
+  const c=selectedScene.config;assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,c.background);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,c.logo);assetOptions('scene-audio',audioExtensions,c.audio);
   for(const [key,value]of Object.entries(c)){const field=$('scene-form').elements.namedItem(key);if(!field)continue;if(field.type==='checkbox')field.checked=value;else field.value=value;}
   $('scene-apply').textContent='Apply changes';
 }
@@ -146,7 +146,7 @@ action('developer-mode',toggleDeveloperMode);
 action('save',save);action('save-all',saveAll);action('run',async()=>{await saveAll();await call('run');showView('console');});action('stop',()=>call('stop'));
 for(const method of ['open','copy','new-project'])action(method,()=>changeProject(method));
 action('export',async()=>{await saveAll();const result=await call('export');if(result)notice('Project exported to '+result.destination);});
-action('import-assets',async()=>{const result=await call('import-assets');if(result){applyState(result.state);if(selectedScene){const form=$('scene-form');assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,form.elements.background.value);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,form.elements.logo.value);}expanded.add('assets');renderFiles();notice('Imported '+result.imported.length+' assets');}});
+action('import-assets',async()=>{const result=await call('import-assets');if(result){applyState(result.state);if(selectedScene){const form=$('scene-form');assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,form.elements.background.value);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,form.elements.logo.value);assetOptions('scene-audio',audioExtensions,form.elements.audio.value);}refreshSoundOptions();expanded.add('assets');renderFiles();notice('Imported '+result.imported.length+' assets');}});
 action('folder',()=>call('folder'));action('refresh',refresh);action('copy-url',copyURL);action('obs-copy',copyURL);
 action('obs-help',()=>{$('obs-url').value=state.obsURL+'/'+$('preview-file').value.split('/').map(encodeURIComponent).join('/');$('obs-dimensions').textContent='Width '+dimensions()[0]+' · Height '+dimensions()[1];$('obs-dialog').showModal();});
 for(const name of ['minimize','maximize','close'])action(name,()=>call(name));
@@ -247,7 +247,8 @@ function renderEvents(){
   }
   const paint=settings.events.some(event=>event.id==='paint'||event.id==='paint-pro');
   document.querySelector('.manual-colour').hidden=!paint;$('palette-heading').hidden=!paint;
-  $('events-save').hidden=!settings.events.length;
+  renderAlertSounds(settings.sounds || {});
+  $('events-save').hidden=false;
   if(!settings.events.length)$('event-settings').textContent='No configurable events have been added to this project.';
   $('events-save').textContent='Apply changes';
 }
@@ -258,8 +259,9 @@ async function saveEvents(){
   const settings=state.events.settings,form=$('events-form').elements;
   const events=settings.events.map(event=>({...event,name:form.namedItem(event.id).value}));
   const colours=Object.fromEntries(Object.keys(settings.colours||{}).map(name=>[name,form.namedItem('colour-'+name).value]));
-  const result=await call('events-update',{events,colours},eventsRevision);
-  eventsDirty=false;applyState(result);notice('Event settings saved. Reward names must match Twitch.');
+  const sounds=Object.fromEntries(Object.keys(alertSoundLabels).map(kind=>[kind,{file:$('sound-'+kind).value,volume:Number($('sound-volume-'+kind).value)}]));
+  const result=await call('events-update',{events,colours,sounds},eventsRevision);
+  eventsDirty=false;applyState(result);refresh();notice('Event settings saved. Refresh OBS browser sources to apply sound changes. Reward names must match Twitch.');
 }
 $('events-form').oninput=()=>{eventsDirty=true;$('events-save').textContent='Apply changes \u2022';};
 $('events-form').onsubmit=event=>{event.preventDefault();saveEvents().catch(report);};
@@ -290,3 +292,36 @@ function renderEventTests(settings){
   }
   requestAnimationFrame(scale);
 }
+
+const audioExtensions=/\.(mp3|mp4|wav|ogg|webm)$/i;
+const alertSoundLabels={follow:'Follower',sub:'Subscriber',cheer:'Bits',donation:'Donation'};
+let soundPreview;
+function stopSoundPreview(){soundPreview?.pause();soundPreview=null;}
+async function previewSound(file,volume){
+  stopSoundPreview();
+  if(!file)throw Error('Choose a sound first.');
+  soundPreview=new Audio(state.previewURL+'/'+file.split('/').map(encodeURIComponent).join('/'));
+  soundPreview.volume=Math.max(0,Math.min(1,Number(volume)/100));
+  try{await soundPreview.play();notice('Playing sound preview');}
+  catch{stopSoundPreview();throw Error('Could not play this file. Check that it contains supported audio.');}
+}
+function renderAlertSounds(sounds){
+  $('alert-sounds').replaceChildren();
+  for(const [kind,title]of Object.entries(alertSoundLabels)){
+    const group=document.createElement('div');group.className='sound-setting';
+    const label=document.createElement('label');label.textContent=title;
+    const select=document.createElement('select');select.id='sound-'+kind;label.append(select);
+    const volumeLabel=document.createElement('label');volumeLabel.textContent=title+' volume (%)';
+    const volume=document.createElement('input');volume.id='sound-volume-'+kind;volume.type='number';volume.min=0;volume.max=100;volume.required=true;volume.value=sounds[kind]?.volume??100;volumeLabel.append(volume);
+    const test=document.createElement('button');test.type='button';test.textContent='Play sound';test.setAttribute('aria-label','Preview '+title.toLowerCase()+' sound');
+    test.onclick=()=>previewSound(select.value,volume.value).catch(report);
+    group.append(label,volumeLabel,test);$('alert-sounds').append(group);
+    assetOptions(select.id,audioExtensions,sounds[kind]?.file||'');
+  }
+}
+function refreshSoundOptions(){
+  for(const kind of Object.keys(alertSoundLabels)){const select=$('sound-'+kind);if(select)assetOptions(select.id,audioExtensions,select.value);}
+}
+action('scene-audio-test',()=>previewSound($('scene-audio').value,$('scene-audio-volume').value));
+for(const button of document.querySelectorAll('[data-stop-audio]'))button.onclick=stopSoundPreview;
+window.addEventListener('pagehide',stopSoundPreview);
