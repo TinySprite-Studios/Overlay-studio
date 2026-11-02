@@ -78,7 +78,7 @@ function renderPreviewFiles(){const current=$('preview-file').value;$('preview-f
 function dimensions(){return $('layout').value==='vertical'?[1080,1920]:[1920,1080];}
 function scale(){const [w,h]=dimensions(),wrap=$('stage').parentElement;const factor=Math.max(.01,Math.min((wrap.clientWidth-32)/w,(wrap.clientHeight-32)/h));Object.assign($('stage').style,{width:w*factor+'px',height:h*factor+'px'});Object.assign($('preview').style,{width:w+'px',height:h+'px',transform:`scale(${factor})`});}
 function refresh(){
-  if(!state)return;const live=$('preview-mode').value==='live',name=$('preview-file').value||'overlays/overlay-horizontal.html';
+  if(!state)return;stopSoundPreview();const live=$('preview-mode').value==='live',name=$('preview-file').value||'overlays/overlay-horizontal.html';
   $('preview').src=(live?state.obsURL:state.previewURL)+'/'+name.split('/').map(encodeURIComponent).join('/')+'?studio='+Date.now();
   $('preview-label').textContent=live?'OBS OUTPUT':'LOCAL PREVIEW';$('live-hint').hidden=!live;document.querySelectorAll('[data-alert], [data-test-event]').forEach(b=>b.disabled=live);scale();
 }
@@ -296,14 +296,18 @@ function renderEventTests(settings){
 const audioExtensions=/\.(mp3|mp4|wav|ogg|webm)$/i;
 const alertSoundLabels={follow:'Follower',sub:'Subscriber',cheer:'Bits',donation:'Donation'};
 let soundPreview;
-function stopSoundPreview(){soundPreview?.pause();soundPreview=null;}
+function stopSoundPreview(){
+  soundPreview?.pause();soundPreview=null;
+  const frame=$('preview');
+  if(frame?.getAttribute('src'))frame.contentWindow.postMessage({type:'audio-stop'},new URL(frame.src).origin);
+}
 async function previewSound(file,volume){
   stopSoundPreview();
   if(!file)throw Error('Choose a sound first.');
-  soundPreview=new Audio(state.previewURL+'/'+file.split('/').map(encodeURIComponent).join('/'));
-  soundPreview.volume=Math.max(0,Math.min(1,Number(volume)/100));
-  try{await soundPreview.play();notice('Playing sound preview');}
-  catch{stopSoundPreview();throw Error('Could not play this file. Check that it contains supported audio.');}
+  const player=new Audio(state.previewURL+'/'+file.split('/').map(encodeURIComponent).join('/'));
+  soundPreview=player;player.volume=Math.max(0,Math.min(1,Number(volume)/100));
+  try{await player.play();if(soundPreview===player)notice('Playing sound preview');}
+  catch(error){if(soundPreview!==player||error.name==='AbortError')return;stopSoundPreview();throw Error('Could not play this file. Check that it contains supported audio.');}
 }
 function renderAlertSounds(sounds){
   $('alert-sounds').replaceChildren();

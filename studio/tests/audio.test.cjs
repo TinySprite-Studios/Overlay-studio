@@ -40,25 +40,24 @@ test('audio settings persist, validate assets, and reach existing and portrait s
   } finally { server?.close(); fs.rmSync(root, {recursive:true,force:true}); }
 });
 
-test('runtime plays once, queues all alert kinds, recovers from bad files, and skips nested frames', async () => {
+test('Studio stays silent until tested, queues alerts, stops all playback, and skips nested frames', async () => {
   const source = fs.readFileSync(path.join(__dirname, '../audio-runtime.js'), 'utf8');
   const listeners = {}, players = [];
   const parent = {location:{origin:'file://'}};
   const window = {TSS_STUDIO_AUDIO:{scene:{file:'assets/start.mp3',volume:40},offline:true,
     alerts:Object.fromEntries(['follow','sub','cheer','donation'].map(kind => [kind,{file:'assets/'+kind+'.mp4',volume:25}]))}};
-  const context = {window,parent,location:{origin:'http://localhost'},console,
+  const context = {window,parent,location:{origin:'http://localhost',search:''},URLSearchParams,console,
     addEventListener:(name,fn) => {listeners[name]=fn;},
     document:{body:{append(){}},createElement:() => {
       const player = {dataset:{},play(){return this.src.includes('broken') ? Promise.reject(Error('bad media')) : Promise.resolve();},pause(){this.paused=true;},remove(){this.removed=true;}};
       players.push(player); return player;
     }}};
   vm.runInNewContext(source, context);
-  assert.equal(players.length, 1);
-  assert.equal(players[0].volume, .4);
+  assert.equal(players.length, 0);
   const send = kind => listeners.message({source:parent,data:{type:'alert',data:{kind}}});
   for (const kind of ['follow','sub','cheer','donation']) send(kind);
-  assert.equal(players.length, 2);
-  for (let i = 1; i < 5; i++) {
+  assert.equal(players.length, 1);
+  for (let i = 0; i < 4; i++) {
     assert.equal(players[i].volume, .25);
     players[i].onended();
     assert.equal(players[i].removed, true);
@@ -67,6 +66,12 @@ test('runtime plays once, queues all alert kinds, recovers from bad files, and s
   send('follow'); send('donation');
   await new Promise(resolve => setImmediate(resolve));
   assert.match(players.at(-1).src, /donation.mp4/);
+  send('donation');
+  const countBeforeStop=players.length;
+  listeners.message({source:parent,data:{type:'audio-stop'}});
+  assert.equal(players.at(-1).paused,true);
+  players.at(-1).onended();
+  assert.equal(players.length,countBeforeStop);
   listeners.pagehide();
   assert.equal(players[0].paused, true);
   const count = players.length;
@@ -77,11 +82,11 @@ test('runtime plays once, queues all alert kinds, recovers from bad files, and s
 
 test('live audio consumes runner alerts and disconnects on scene exit', () => {
   const source = fs.readFileSync(path.join(__dirname, '../audio-runtime.js'), 'utf8');
-  const players = [], exits = [];
+  const players = [], exits = [], listeners = {};
   let stream;
   const window = {TSS_STUDIO_AUDIO:{scene:{},alerts:{donation:{file:'assets/tip.mp3',volume:60}},offline:false}};
-  const context = {window,parent:window,location:{origin:'http://localhost'},console,
-    addEventListener:(name,fn) => {if(name==='pagehide')exits.push(fn);},
+  const context = {window,parent:window,location:{origin:'http://localhost',search:''},URLSearchParams,console,
+    addEventListener:(name,fn) => {if(name==='pagehide')exits.push(fn);else listeners[name]=fn;},
     EventSource:class {
       constructor(url) {assert.equal(url,'/events');stream=this;}
       addEventListener(name,handler) {assert.equal(name,'alert');this.receive=handler;}
@@ -93,9 +98,48 @@ test('live audio consumes runner alerts and disconnects on scene exit', () => {
     }}};
   vm.runInNewContext(source, context);
   stream.receive({data:JSON.stringify({kind:'donation',name:'Viewer'})});
+  assert.equal(players.length,0);
+  listeners.obsSourceActiveChanged({detail:{active:true}});
+  stream.receive({data:JSON.stringify({kind:'donation',name:'Viewer'})});
   assert.equal(players[0].src,'/assets/tip.mp3');
   assert.equal(players[0].volume,.6);
   for(const exit of exits)exit();
   assert.equal(stream.closed,true);
   assert.equal(players[0].paused,true);
+});
+
+test('OBS cached sources stop on scene switches, restart on re-entry, and ignore preview visibility', () => {
+  const source=fs.readFileSync(path.join(__dirname,'../audio-runtime.js'),'utf8');
+  function browser(search=''){
+    const listeners={},players=[];
+    const window={TSS_STUDIO_AUDIO:{scene:{file:'assets/song.mp3',volume:100},alerts:{},offline:false}};
+    vm.runInNewContext(source,{window,parent:window,URLSearchParams,location:{origin:'http://localhost',search},console,
+      addEventListener:(name,handler)=>{listeners[name]=handler;},
+      document:{body:{append(){}},createElement:()=>{
+        const player={dataset:{},play:()=>Promise.resolve(),pause(){this.paused=true;},remove(){this.removed=true;}};
+        players.push(player);return player;
+      }}});
+    return {players,emit:(type,detail)=>listeners[type]?.({detail})};
+  }
+  const starting=browser(),ending=browser(),brb=browser();
+  assert.equal(starting.players.length+ending.players.length+brb.players.length,0);
+  starting.emit('obsSourceVisibleChanged',{visible:true});
+  assert.equal(starting.players.length,0,'Studio Mode preview must stay silent');
+  starting.emit('obsSourceActiveChanged',{active:true});
+  starting.emit('obsSourceActiveChanged',{active:true});
+  assert.equal(starting.players.length,1,'duplicate callbacks must not restart');
+  starting.emit('obsSourceActiveChanged',{active:false});
+  ending.emit('obsSourceActiveChanged',{active:true});
+  assert.equal(starting.players[0].paused,true);
+  assert.equal(ending.players.length,1);
+  ending.emit('obsSourceActiveChanged',{active:false});
+  brb.emit('obsSourceActiveChanged',{active:true});
+  assert.equal(ending.players[0].paused,true);
+  brb.emit('obsSourceVisibleChanged',{visible:false});
+  assert.equal(brb.players[0].paused,true);
+  starting.emit('obsSourceActiveChanged',{active:true});
+  assert.equal(starting.players.length,2,'returning starts a fresh cue');
+  const studioLive=browser('?studio=123');
+  studioLive.emit('obsSourceActiveChanged',{active:true});
+  assert.equal(studioLive.players.length,0,'Studio live preview must not autoplay');
 });

@@ -3,9 +3,18 @@
   // Portrait wrappers and custom overlays may contain other scene frames.
   try { if (parent !== window && parent.location.origin === location.origin) return; } catch {}
   const {scene, alerts, offline} = window.TSS_STUDIO_AUDIO;
+  const studioPreview = offline || new URLSearchParams(location.search).has('studio');
   const players = new Set();
   const queue = [];
-  let alertPlaying = false;
+  let alertPlaying = false, active = false, visible = true, playingScene = false, generation = 0;
+
+  function stop() {
+    generation++;
+    queue.length = 0;
+    alertPlaying = false;
+    for (const player of players) { player.pause(); player.remove(); }
+    players.clear();
+  }
 
   function play(sound, done = () => {}) {
     if (!sound?.file || sound.volume === 0) { done(); return; }
@@ -15,6 +24,7 @@
     player.dataset.studioAudio = 'true';
     document.body.append(player);
     players.add(player);
+    const started = generation;
     let finished = false;
     const finish = () => {
       if (finished) return;
@@ -22,7 +32,7 @@
       player.pause();
       player.remove();
       players.delete(player);
-      done();
+      if (started === generation) done();
     };
     player.onended = player.onerror = finish;
     player.play().catch(error => { console.warn('Scene audio could not play:', error.message); finish(); });
@@ -34,20 +44,41 @@
     play(queue.shift(), () => { alertPlaying = false; nextAlert(); });
   }
   function alert(data) {
+    if (!studioPreview && !playingScene) return;
     const sound = alerts[data?.kind];
     if (!sound?.file || sound.volume === 0 || queue.length >= 100) return;
     queue.push(sound);
     nextAlert();
   }
-  if (offline) {
+  if (studioPreview) {
     addEventListener('message', event => {
-      if (event.source === parent && event.data?.type === 'alert') alert(event.data.data);
+      if (event.source !== parent) return;
+      if (event.data?.type === 'audio-stop') stop();
+      if (event.data?.type === 'alert') alert(event.data.data);
     });
-  } else if (Object.values(alerts).some(sound => sound.file)) {
-    const events = new EventSource('/events');
-    events.addEventListener('alert', event => { try { alert(JSON.parse(event.data)); } catch {} });
-    addEventListener('pagehide', () => events.close());
+  } else {
+    const update = () => {
+      const next = active && visible;
+      if (next === playingScene) return;
+      playingScene = next;
+      stop();
+      if (next) play(scene);
+    };
+    // OBS keeps inactive browser sources loaded. Only an explicit activation
+    // may start audio; page load and Studio Mode preview are not activation.
+    addEventListener('obsSourceActiveChanged', event => {
+      if (typeof event.detail?.active !== 'boolean') return;
+      active = event.detail.active; update();
+    });
+    addEventListener('obsSourceVisibleChanged', event => {
+      if (typeof event.detail?.visible !== 'boolean') return;
+      visible = event.detail.visible; update();
+    });
+    if (Object.values(alerts).some(sound => sound.file)) {
+      const events = new EventSource('/events');
+      events.addEventListener('alert', event => { try { alert(JSON.parse(event.data)); } catch {} });
+      addEventListener('pagehide', () => events.close());
+    }
   }
-  addEventListener('pagehide', () => { queue.length = 0; for (const player of players) player.pause(); });
-  play(scene);
+  addEventListener('pagehide', () => { playingScene = false; stop(); });
 })();

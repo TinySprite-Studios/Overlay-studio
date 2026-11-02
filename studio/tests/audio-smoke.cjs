@@ -25,10 +25,15 @@ const {list} = require('../workspace.cjs');
     await page.locator('#scene-apply').click();
     await page.waitForFunction(() => selectedScene.config.audio === 'assets/cue.mp3' && !sceneDirty);
     let frame = await (await page.locator('#preview').elementHandle()).contentFrame();
-    await frame.waitForFunction(() => document.querySelector('audio[data-studio-audio]')?.currentTime > 0, null, {timeout:15000});
-    assert.equal(await frame.locator('audio').evaluate(audio => audio.volume), .35);
-    await frame.locator('audio[data-studio-audio]').waitFor({state:'detached'});
-    assert.equal(await frame.locator('audio').count(), 0);
+    await frame.waitForFunction(() => window.TSS_STUDIO_AUDIO, null, {timeout:15000});
+    assert.equal(await frame.locator('audio').count(),0,'Apply must not start the scene song');
+    await page.locator('#scene-audio-test').click();
+    await page.waitForFunction(() => soundPreview?.currentTime > 0);
+    assert.equal(await page.evaluate(() => soundPreview.volume),.35);
+    await page.evaluate(() => {window.testPlayer=soundPreview;});
+    await page.locator('#scene-form [data-stop-audio]').click();
+    assert.equal(await page.evaluate(() => testPlayer.paused),true);
+    assert.equal(await page.evaluate(() => soundPreview),null);
     const sceneId = await page.evaluate(() => selectedScene.id);
 
     await page.locator('#view-events').click();
@@ -51,6 +56,10 @@ const {list} = require('../workspace.cjs');
       await frame.waitForFunction(() => document.querySelector('audio[data-studio-audio]')?.currentTime > 0, null, {timeout:15000});
       assert.equal(await frame.locator('audio').evaluate(audio => audio.volume), .25);
       assert.equal(await frame.locator('video').count(), 0);
+      if(kind==='donation'){
+        await page.locator('#view-scenes').click();
+        await page.locator('#scene-form [data-stop-audio]').click();
+      }
       await frame.locator('audio').waitFor({state:'detached'});
     }
     await page.locator('#view-scenes').click();
@@ -60,7 +69,8 @@ const {list} = require('../workspace.cjs');
     await page.locator('#vertical-form button[type=submit]').click();
     await page.locator('#vertical-dialog').waitFor({state:'hidden'});
     frame = await (await page.locator('#preview').elementHandle()).contentFrame();
-    await frame.waitForFunction(() => document.querySelector('audio')?.currentTime > 0, null, {timeout:15000});
+    await frame.waitForFunction(() => window.TSS_STUDIO_AUDIO, null, {timeout:15000});
+    assert.equal(await frame.locator('audio').count(),0,'portrait preview must stay silent');
     assert.equal(await page.frameLocator('#preview').frameLocator('#portrait-source').locator('audio').count(), 0);
     assert.equal(await page.locator('#scene-audio').isVisible(), true);
     await page.locator('#scene-audio').selectOption('');
@@ -71,8 +81,28 @@ const {list} = require('../workspace.cjs');
     await page.locator('#view-events').click();
     assert.equal(await page.locator('#sound-donation').inputValue(), 'assets/cue.mp4');
     assert.equal(await page.locator('#sound-volume-donation').inputValue(), '25');
+    // Exercise the published runtime with OBS's documented lifecycle events.
+    await page.locator('#view-scenes').click();
+    await page.evaluate(id => selectScene(id),sceneId);
+    await page.locator('#preview-mode').selectOption('live');
+    frame=await (await page.locator('#preview').elementHandle()).contentFrame();
+    await frame.goto(frame.url().split('?')[0]);
+    await frame.waitForFunction(() => window.TSS_STUDIO_AUDIO, null, {timeout:15000});
+    assert.equal(await frame.locator('audio').count(),0,'cached inactive source stays silent');
+    await frame.evaluate(() => dispatchEvent(new CustomEvent('obsSourceActiveChanged',{detail:{active:true}})));
+    await frame.waitForFunction(() => document.querySelector('audio')?.currentTime > 0,null,{timeout:15000});
+    await frame.evaluate(() => {
+      window.previousSong=document.querySelector('audio');
+      dispatchEvent(new CustomEvent('obsSourceActiveChanged',{detail:{active:false}}));
+    });
+    assert.equal(await frame.evaluate(() => previousSong.paused),true);
+    assert.equal(await frame.locator('audio').count(),0);
+    await frame.evaluate(() => dispatchEvent(new CustomEvent('obsSourceActiveChanged',{detail:{active:true}})));
+    await frame.waitForFunction(() => document.querySelector('audio')?.currentTime > 0,null,{timeout:15000});
+    assert.equal(await frame.evaluate(() => previousSong!==document.querySelector('audio')),true);
+    await frame.evaluate(() => dispatchEvent(new CustomEvent('obsSourceActiveChanged',{detail:{active:false}})));
     await page.screenshot({path:path.join(source,'studio/artifacts/audio-events.png')});
-    console.log('PASS: imported MP3/MP4 decode, scene cue, all four alert sounds, volume, stop, persistence, and portrait playback without doubling.');
+    console.log('PASS: MP3/MP4 previews, silent Apply/portrait previews, working Stop, all alert sounds, volume and persistence.');
   } finally {
     if (app) { await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows().forEach(win => win.removeAllListeners('close'))); await app.close(); }
     fs.rmSync(root, {recursive:true,force:true,maxRetries:5,retryDelay:200});
