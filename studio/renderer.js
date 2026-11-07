@@ -85,7 +85,7 @@ function refresh(){
 function setRunning(value){running=value;$('run').disabled=value;$('stop').disabled=!value;$('run-status').textContent=value?'● Runner active':'● Runner stopped';$('run-status').classList.toggle('running',value);$('console-input').disabled=!value;}
 async function changeProject(method){
   if(switching)return;if(dirty()){const choice=await call('resolve-close','your project before switching');if(choice===2)return;if(choice===0)await saveAll();}
-  stopSoundPreview();switching=true;try{const next=await call(method);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;eventsDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();if(method==='new-project'){showView('scenes');await selectScene(next.scenes[0].id);}notice('Opened '+next.name);}finally{switching=false;}
+  stopSoundPreview();switching=true;try{const next=await call(method);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;eventsDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();showView('workspace');notice('Opened '+next.name);}finally{switching=false;}
 }
 function renderScenes(){
   $('scene-count').textContent=state.scenes.length;$('scene-cards').replaceChildren();

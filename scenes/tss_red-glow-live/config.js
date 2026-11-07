@@ -1,0 +1,23 @@
+// Scene settings. The Studio visual editor updates this file.
+window.TSS_SCENE = {
+  "audioDelay": 0,
+  "audio": "",
+  "audioVolume": 100,
+  "version": 1,
+  "type": "live",
+  "name": "Red Glow Live",
+  "title": "Now playing",
+  "subtitle": "Welcome to the stream",
+  "channel": "YOUR CHANNEL",
+  "social": "Follow along · @yourchannel",
+  "accent": "#ed353b",
+  "base": "#10121a",
+  "layout": "horizontal",
+  "style": "minimal",
+  "countdown": 0,
+  "countdownEnd": "We’re getting ready…",
+  "background": "",
+  "overlay": 65,
+  "logo": "",
+  "animate": true
+};

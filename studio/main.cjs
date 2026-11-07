@@ -6,6 +6,7 @@ const path = require('node:path');
 const {serve} = require('./server.cjs');
 const scenes = require('./scenes.cjs');
 const events = require('./events.cjs');
+const {prepareProject} = require('./project.cjs');
 const {spawn} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
 const {resolveFile, list, editable, media} = require('./workspace.cjs');
@@ -52,16 +53,12 @@ async function stop() {
 }
 function run() {
   if (child) return;
-  const script = resolveFile(root, 'start-twitch.cmd');
-  if (!fs.existsSync(script)) throw Error('This project needs a start-twitch.cmd file.');
-  const runtime = path.join(app.getPath('userData'), 'runtime');
-  fs.mkdirSync(runtime, {recursive:true});
-  fs.writeFileSync(path.join(runtime, 'node.cmd'), '@echo off\r\n"' + process.execPath + '" %*\r\n');
-  const active = spawn(process.env.ComSpec || 'cmd.exe', ['/d','/c','start-twitch.cmd'], {
-    cwd:root, windowsHide:true, env:{...process.env, ELECTRON_RUN_AS_NODE:'1', PATH:runtime + path.delimiter + process.env.PATH}
+  prepareProject(root, template());
+  const active = spawn(process.execPath, [resolveFile(root, 'scripts/tss-twitch.mjs')], {
+    cwd:root, windowsHide:true, env:{...process.env, ELECTRON_RUN_AS_NODE:'1'}
   });
   child = active;
-  log('Starting start-twitch.cmd…\n');
+  log('Starting Twitch helper…\n');
   send({type:'running', running:true});
   active.stdout.on('data', data => log(data.toString(), 'stdout'));
   active.stderr.on('data', data => log(data.toString(), 'error'));
@@ -122,15 +119,23 @@ ipcMain.handle('studio', async (event, method, ...args) => {
     case 'new-folder': {fs.mkdirSync(resolveFile(root,args[0]),{recursive:true});return state();}
     case 'open': case 'copy': case 'new-project': case 'export': {
       if (child && method!=='export') throw Error('Stop the runner before switching projects.');
-      const result = await dialog.showOpenDialog(win,{title:method !== 'open' ? 'Choose an empty folder for your project' : 'Open an overlay project',properties:['openDirectory','createDirectory']});
+      let importOverlay = method === 'open';
+      if (method === 'new-project') {
+        const choice = await dialog.showMessageBox(win, {type:'question', title:'New overlay project',
+          message:'How would you like to start?', detail:'Import opens your overlay folder and adds missing support files. Your overlay files are kept.',
+          buttons:['Import overlay folder', 'Create from templates', 'Cancel'], defaultId:0, cancelId:2});
+        if (choice.response === 2) return null;
+        importOverlay = choice.response === 0;
+      }
+      const result = await dialog.showOpenDialog(win,{title:importOverlay ? 'Choose your overlay folder' : 'Choose an empty folder for your project',properties:['openDirectory','createDirectory']});
       if (result.canceled) return null;
       const selected = result.filePaths[0];
-      if (method !== 'open') {
+      if (!importOverlay) {
         if (fs.readdirSync(selected).length) throw Error('Choose an empty folder so existing files stay safe.');
         copyProject(method==='new-project'?template():root,selected);
         if(method==='new-project')scenes.starters(selected);
         if(method==='export')return {destination:selected};
-      } else if (!fs.existsSync(path.join(selected,'start-twitch.cmd'))) throw Error('Choose an overlay folder containing start-twitch.cmd.');
+      } else prepareProject(selected, template());
       root = selected; fs.writeFileSync(path.join(app.getPath('userData'),'workspace.json'),JSON.stringify({root})); watch(); return state();
     }
     case 'run': run(); return true;
