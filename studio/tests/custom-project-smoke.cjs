@@ -7,7 +7,10 @@ const {createProject} = require('../project.cjs');
   try {
     createProject(root);
     const fields = [{key:'heading', type:'text', default:'Hello'}, {key:'enabled', type:'boolean', default:true}];
-    fs.writeFileSync(path.join(root, 'tss-events.json'), JSON.stringify({version:1, events:[{id:'confetti',name:'Celebrate',trigger:'points',fields}]}));
+    const eventFields=[{...fields[0],label:'Alert heading'},{key:'duration',label:'Duration (seconds)',type:'number',default:8,min:1},{...fields[1],label:'Enabled'}];
+    const events=[['confetti','New Follower','channel.follow'],['subscriber','New Subscriber','channel.subscribe'],['donator','New Donator','tip'],['bits','New Bits','channel.cheer']]
+      .map(([id,name,trigger])=>({id,name,trigger,fields:eventFields,values:{heading:name.toUpperCase()}}));
+    fs.writeFileSync(path.join(root, 'tss-events.json'), JSON.stringify({version:1,events}));
     const dir = path.join(root, 'scenes/tss_custom');fs.mkdirSync(dir);
     fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify({type:'custom',name:'Custom',fields}));
     fs.writeFileSync(path.join(dir, 'index.html'), `<html><head></head><body><h1></h1><script>
@@ -25,9 +28,19 @@ const {createProject} = require('../project.cjs');
     await page.frameLocator('#preview').locator('body[data-event="confetti"]').waitFor();
     await page.locator('#view-events').click();
     assert.equal(await page.locator('#project-sounds').isVisible(),false);
-    await page.locator('#event-settings [data-setting="heading"]').fill('Event heading');
+    assert.equal(await page.locator('.event-card').count(),4);
+    assert.equal(await page.locator('#event-count').textContent(),'4 events');
+    assert.equal(await page.locator('.event-card').filter({hasText:'New Follower'}).locator('[data-setting="duration"]').count(),1);
+    fs.mkdirSync(path.join(__dirname,'../artifacts'),{recursive:true});
+    await page.screenshot({path:path.join(__dirname,'../artifacts/events-page.png')});
+    await page.setViewportSize({width:1100,height:740});
+    assert.equal(await page.locator('.events-content').evaluate(element=>element.scrollWidth<=element.clientWidth),true);
+    await page.locator('[data-event-fields="confetti"] [data-setting="heading"]').fill('Event heading');
+    await page.locator('[data-event-fields="confetti"] [data-setting="enabled"]').uncheck();
     await page.locator('#events-save').click();
     await page.waitForFunction(()=>state.events.settings.events[0].values.heading==='Event heading');
+    assert.equal(await page.evaluate(()=>state.events.settings.events[0].values.enabled),false);
+    assert.equal(await page.evaluate(()=>state.events.settings.events[1].values.heading),'NEW SUBSCRIBER');
     await page.locator('#view-scenes').click();
     await page.locator('#scene-custom-settings [data-setting="heading"]').fill('Updated scene');
     await page.locator('#scene-custom-settings [data-setting="enabled"]').uncheck();

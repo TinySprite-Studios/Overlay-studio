@@ -108,3 +108,47 @@ main[data-view=settings] .workarea,main[data-view=settings] .banner-actions{disp
 #scene-form>.scene-form-actions button:hover{filter:brightness(1.15)}
 @container scene-inspector (max-width:510px){#scene-settings-nav{width:112px;padding:10px 6px}#scene-settings-nav button{font-size:10px;gap:6px;padding:8px 5px}#scene-settings-content{padding:14px 11px}#scene-form .form-grid{grid-template-columns:minmax(0,1fr)}#scene-form>.scene-form-actions{padding:10px;gap:6px}#scene-form>.scene-form-actions button{padding:8px;font-size:9px}.scene-form-actions .spacer{display:none}#scene-apply{margin-left:auto}}
 @media(prefers-reduced-motion:reduce){#scene-form .scene-toggle input[type=checkbox],#scene-form .scene-toggle input[type=checkbox]::after{transition:none}}
+
+/* Keep each project's event controls together, with actions always in reach. */
+main[data-view=events] #events-panel{display:flex;flex-direction:column;overflow:hidden;border-color:#30343b;border-radius:10px;background:linear-gradient(135deg,#171a1e,#111315 75%)}
+#events-form{display:flex;flex-direction:column;flex:1;min-height:0;padding:0}
+.events-content{flex:1;min-height:0;overflow:auto;padding:24px;scrollbar-width:thin;scrollbar-color:#3d424a transparent}
+.events-heading{display:flex;align-items:start;justify-content:space-between;gap:20px;margin-bottom:24px}
+#events-form .events-heading h2{font-size:17px;font-weight:600;margin:0 0 7px;letter-spacing:-.2px}
+.events-heading p{font-size:11px;color:#a4acb9;line-height:1.6;margin:0;max-width:680px}
+#event-count{flex-shrink:0;border:1px solid #3f3038;border-radius:20px;background:#ed496012;color:#e8a9b4;padding:6px 11px;font-size:10px;font-variant-numeric:tabular-nums}
+#event-settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;align-items:start}
+.event-card{border:1px solid #343941;border-radius:9px;overflow:hidden;background:linear-gradient(140deg,#1b1e23,#15181c);box-shadow:0 5px 18px #00000017;min-width:0}
+.event-card-heading{display:flex;gap:12px;align-items:center;padding:19px 18px;border-bottom:1px solid #30343b;background:linear-gradient(115deg,#32212755,#20232966)}
+.event-card-heading>div{min-width:0}
+#events-form .event-card-heading h3{font-size:14px;line-height:1.4;font-weight:600;margin:0 0 5px;color:#f2f3f7;overflow-wrap:anywhere}
+.event-icon{display:grid;place-items:center;width:36px;height:36px;flex-shrink:0;border:1px solid #70404c;border-radius:10px;background:#d9435c14;color:#ff7a92;box-shadow:0 0 16px #ff3d5b0a}
+.event-icon svg{width:20px;height:20px}.event-kind{font-size:10px;color:#c0a0aa;letter-spacing:.2px}
+.event-card-body{padding:19px 18px;display:flex;flex-direction:column;gap:16px}
+#events-form .event-card .form-grid{grid-template-columns:minmax(0,1fr);gap:15px}
+#events-form .event-card label{display:flex;flex-direction:column;gap:7px;font-size:11px;color:#acb5c3;min-width:0;line-height:1.4}
+#events-form .event-card input:not([type=checkbox]),#events-form .event-card select,#events-form .event-card textarea{width:100%;min-width:0;min-height:36px;border:1px solid #414751;border-radius:6px;background:#111418;color:#eceef4;font-size:12px;padding:9px 10px;box-shadow:inset 0 1px 3px #0002}
+#events-form .event-card input[type=color]{padding:4px;cursor:pointer}
+#events-form input:focus-visible,#events-form select:focus-visible,#events-form textarea:focus-visible{outline:2px solid #f2647d;outline-offset:2px}
+#events-form .event-card small{font-size:10px;color:#8f9baa;line-height:1.5}
+#events-form .event-card label.event-toggle{display:grid;grid-template-columns:minmax(0,1fr) 30px;align-items:center;gap:9px;padding:11px 12px;background:#24282e;border:1px solid #353b44;border-radius:6px;color:#dce0e8}
+#events-form .event-toggle small{grid-column:1/-1}
+#events-form .event-toggle input[type=checkbox]{appearance:none;position:relative;width:30px;height:17px;margin:0;padding:0;border:0;border-radius:12px;background:#545b66;cursor:pointer;transition:background .15s}
+#events-form .event-toggle input[type=checkbox]::after{content:'';position:absolute;left:2px;top:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0006;transition:transform .15s}
+#events-form .event-toggle input[type=checkbox]:checked{background:linear-gradient(120deg,#ff5d77,#f92d55);box-shadow:0 0 9px #ff365322}
+#events-form .event-toggle input[type=checkbox]:checked::after{transform:translateX(13px)}
+#events-form #palette-heading,#project-sounds>h3{padding-top:24px;border-top:1px solid #30343b;font-weight:600;font-size:14px}
+#events-form #event-colours{grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+#event-colours label{background:#1c2025;border:1px solid #343941;padding:12px;border-radius:6px;text-transform:capitalize}
+#events-form .sound-setting{border-color:#343941;border-radius:8px;background:linear-gradient(130deg,#20242a,#171a1e);padding:16px;gap:12px}
+.events-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0;padding:16px 24px;border-top:1px solid #343941;background:#191c20}
+#events-save-status{font-size:11px;color:#96a1b0;display:flex;align-items:center;gap:8px}
+#events-save-status::before{content:'';width:5px;height:5px;border-radius:50%;background:#657180}
+#events-save-status.unsaved{color:#f4bac5}#events-save-status.unsaved::before{background:#ff5976;box-shadow:0 0 8px #ff365340}
+#events-save{padding:10px 18px;border:1px solid #f6536b;border-radius:6px;background:linear-gradient(#f34f69,#d92d4c);box-shadow:0 0 12px #f535531a;white-space:nowrap;font-size:11px}
+#events-save::before{content:'\2713';margin-right:7px;font-size:14px}
+.events-empty{grid-column:1/-1;padding:45px 24px;border:1px dashed #3b414b;border-radius:8px;text-align:center;background:#171a1f}
+#events-form .events-empty h3{font-size:16px;margin:0 0 9px;color:#d9dfe8}.events-empty p{font-size:12px;color:#96a1b0;line-height:1.6;margin:0}
+#events-panel>.manual-colour{flex-shrink:0}
+@media(max-width:1200px){.events-content{padding:18px}.events-actions{padding:14px 18px}#event-settings{gap:14px}}
+@media(prefers-reduced-motion:reduce){#events-form .event-toggle input[type=checkbox],#events-form .event-toggle input[type=checkbox]::after{transition:none}}
