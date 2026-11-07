@@ -106,7 +106,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
     }
     case 'twitch-connect': case 'connection-save': case 'connection-disconnect': {
       if(child)throw Error('Stop the runner before changing account connections.');
-      if(method==='twitch-connect')return connections.connect(root,args[0]);
+      if(method==='twitch-connect')return connections.connect(root);
       if(method==='connection-save')return connections.saveDonation(root,args[0]);
       return connections.disconnect(root,args[0]);
     }
@@ -123,7 +123,6 @@ ipcMain.handle('studio', async (event, method, ...args) => {
       if(!provider?.dashboard)throw Error('Open your provider website to get its connection details.');
       await shell.openExternal(provider.dashboard);return true;
     }
-    case 'twitch-developer': await shell.openExternal('https://dev.twitch.tv/console/apps');return true;
 
     case 'update-state': return updates.state();
     case 'update-check': return updates.check();

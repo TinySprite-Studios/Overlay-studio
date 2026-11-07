@@ -22,13 +22,13 @@ function fixture(overrides={}) {
     if(url.endsWith('channels/me'))return response({_id:'channel',username:'streamer',provider:'twitch',providerId:account});
     throw Error('Unexpected URL: '+url);
   };
-  const service=createConnections({directory:folder,encryption,fetcher,openBrowser:async url=>opened.push(url),pollDelay:0,verifyStreamlabs:async token=>{assert.equal(token,'socket-secret');},...overrides});
+  const service=createConnections({directory:folder,encryption,fetcher,defaultClientId:'testclient123',openBrowser:async url=>opened.push(url),pollDelay:0,verifyStreamlabs:async token=>{assert.equal(token,'socket-secret');},...overrides});
   return {service,folder,requests,opened,setAccount:value=>account=value,cleanup:()=>{service.cancel();fs.rmSync(folder,{recursive:true,force:true});}};
 }
 test('Twitch sign-in saves encrypted credentials per project and never returns secrets',async()=>{
   const f=fixture(),root=path.join(f.folder,'project-a'),other=path.join(f.folder,'project-b');
   try {
-    await f.service.connect(root,'testclient123');
+    await f.service.connect(root);
     await waitFor(()=>f.service.state(root).twitch.connected);
     assert.equal(f.service.state(root).twitch.login,'streamer-123');
     assert.equal(f.service.state(other).twitch.connected,false);

@@ -4,7 +4,7 @@ Open your project, then Settings. Connections are saved separately for each proj
 
 ## Twitch
 
-Click **Connect Twitch**, approve access in your browser using the displayed code, then return to Studio. Overlay Studio includes its public Twitch application Client ID; streamers do not need to register their own application. The optional Twitch app setup section allows developers to use another public Client ID. No client secret is required.
+Click **Connect Twitch**, approve access in your browser using the displayed code, then return to Studio. Overlay Studio includes its public Twitch application Client ID; streamers do not need to register their own application. No client secret is required.
 
 Click **Run overlay** to receive follows, subscriptions, bits and channel-point events. **Check connection** verifies your saved login while the runner is stopped. Stop the runner before changing connections. Signing in to a different Twitch account removes native donation tokens associated with the previous account.
 

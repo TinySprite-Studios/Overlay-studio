@@ -43,7 +43,7 @@ function createConnections({directory, encryption, fetcher = fetch, openBrowser,
   }
   function state(root) {
     const data = read(root), flow = pending?.root === root ? pending.public : null;
-    return {root, providers, clientId:data.twitch?.clientId || defaultClientId,
+    return {root, providers,
       twitch:{connected:!!data.twitch?.access_token, login:data.twitch?.login || '', pending:flow,
         status:statuses.get(root)?.twitch || (data.twitch?.access_token ? 'Saved connection. Run overlay to receive events.' : 'Not connected')},
       donations:Object.entries(data.donations || {}).map(([id, value]) => ({id, mode:value.mode, link:value.link,
@@ -75,7 +75,7 @@ function createConnections({directory, encryption, fetcher = fetch, openBrowser,
   }
   async function connect(root, clientId) {
     clientId = String(clientId || defaultClientId).trim();
-    if (!/^[a-z0-9]{8,128}$/i.test(clientId)) throw Error('A public Twitch application Client ID is needed. Open the Twitch app setup section.');
+    if (!/^[a-z0-9]{8,128}$/i.test(clientId)) throw Error('Twitch connection is unavailable in this build. Please update Overlay Studio.');
     cancel();
     const flow = {root, controller:new AbortController(), public:{status:'Preparing Twitch sign-in...'}};
     pending = flow;

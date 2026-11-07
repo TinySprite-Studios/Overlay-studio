@@ -63,6 +63,7 @@ test('managed runner refreshes credentials through IPC and delivers Twitch and d
     await wait(()=>messages.filter(message=>message.type==='connection-status'&&message.message.startsWith('Connected')).length===3);
     assert.equal(messages.find(message=>message.type==='credentials').credentials.access_token,'refreshed-secret');
     assert.equal(fs.existsSync(path.join(runtime,'credentials.json')),false);
+    await wait(()=>messages.some(message=>message.type==='test-port'));
     const port=messages.find(message=>message.type==='test-port').port;
     const options={hostname:'127.0.0.1',port,headers:{Host:'127.0.0.1:8787'}};
     let page='';

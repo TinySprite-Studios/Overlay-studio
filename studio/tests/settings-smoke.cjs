@@ -14,7 +14,9 @@ const {createProject}=require('../project.cjs');
     await page.waitForFunction(()=>document.querySelector('#donation-provider').options.length>5);
     assert.equal(await page.locator('#settings-panel').isVisible(),true);
     assert.equal(await page.locator('#workarea').isVisible(),false);
-    assert.equal(await page.locator('#twitch-client-id').inputValue(),require('../twitch-app.json').clientId);
+    assert.equal(await page.locator('#twitch-client-id, #twitch-app-setup, #twitch-developer').count(),0);
+    assert.equal(await page.locator('#twitch-connect').isEnabled(),true);
+    assert.equal(await page.evaluate(async()=>Object.hasOwn(await call('connections-state'),'clientId')),false);
     await page.locator('#donation-provider').selectOption('kofi');
     await page.locator('#donation-link').fill('https://ko-fi.com/streamer');
     await page.locator('#donation-overlay').fill('https://ko-fi.com/streamalerts/private-example');
@@ -45,7 +47,7 @@ const {createProject}=require('../project.cjs');
     await page.locator('.saved-connection').filter({hasText:'Ko-fi'}).getByRole('button',{name:'Disconnect',exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.saved-connection').length===1);
     assert.deepEqual(errors,[]);
-    console.log('PASS: Settings navigation, shared Twitch Client ID, provider URLs, private URL masking, persistence, project isolation and disconnect.');
+    console.log('PASS: Settings navigation, hidden Twitch app configuration, provider URLs, private URL masking, persistence, project isolation and disconnect.');
   } finally {
     if(app){await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().forEach(win=>win.removeAllListeners('close')));await app.close();}
     fs.rmSync(root,{recursive:true,force:true,maxRetries:5,retryDelay:200});

@@ -19,7 +19,6 @@
   <section class="connection-card">
     <h2>Twitch</h2><p>Connect your streaming account to receive followers, subscribers, bits and channel-point events.</p>
     <p id="twitch-status" role="status">Not connected</p>
-    <details id="twitch-app-setup"><summary>Twitch app setup</summary><p class="field-help">Overlay Studio includes its public Twitch Client ID. Streamers can connect without changing it. Developers using their own public Twitch application can enter its Client ID below. Never enter a client secret here.</p><label>Public Client ID<input id="twitch-client-id" autocomplete="off" spellcheck="false"></label><button id="twitch-developer" type="button">Open Twitch developer console</button></details>
     <div id="twitch-pending" hidden><p>Enter this code on Twitch and approve the connection:</p><strong id="twitch-code"></strong><p id="twitch-expiry"></p><button id="twitch-browser" type="button">Reopen Twitch sign-in</button><button id="twitch-cancel" type="button">Cancel sign-in</button></div>
     <div class="connection-actions"><button id="twitch-connect" class="primary" type="button">Connect Twitch</button><button id="twitch-check" type="button">Check connection</button><button id="twitch-disconnect" type="button">Disconnect</button></div>
   </section>

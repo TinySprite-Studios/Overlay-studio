@@ -73,8 +73,6 @@
       if(state.root!==requestedRoot)return;
       render(data);
       if(!edited) {
-        $('twitch-client-id').value=data.clientId;
-        $('twitch-app-setup').open=!data.clientId;
         $('donation-provider').replaceChildren(...data.providers.map(provider=>new Option(provider.name,provider.id)));
         fillDonation();
       }
@@ -119,8 +117,7 @@
   };
   $('donation-provider').oninput=event=>event.stopPropagation();
   action('donation-dashboard',()=>call('connection-dashboard',$('donation-provider').value));
-  action('twitch-developer',()=>call('twitch-developer'));
-  action('twitch-connect',()=>perform(()=>call('twitch-connect',$('twitch-client-id').value)));
+  action('twitch-connect',()=>perform(()=>call('twitch-connect')));
   action('twitch-check',()=>perform(()=>call('connections-check')));
   action('twitch-disconnect',()=>perform(()=>call('connection-disconnect','twitch')));
   action('twitch-browser',()=>call('twitch-browser'));
