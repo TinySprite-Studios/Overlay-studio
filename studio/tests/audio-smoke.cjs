@@ -92,9 +92,11 @@ const {list} = require('../workspace.cjs');
     // Exercise the published runtime with OBS's documented lifecycle events.
     await page.locator('#view-scenes').click();
     await page.evaluate(id => selectScene(id),sceneId);
-    await page.locator('#preview-mode').selectOption('live');
-    await page.frameLocator('#preview').locator('body').waitFor();
-    frame=await (await page.locator('#preview').elementHandle()).contentFrame();
+    const liveOrigin=await page.evaluate(()=>state.obsURL);
+    [frame]=await Promise.all([
+      page.waitForEvent('framenavigated',{predicate:frame=>frame.parentFrame()===page.mainFrame()&&frame.url().startsWith(liveOrigin+'/')}),
+      page.locator('#preview-mode').selectOption('live')
+    ]);
     await frame.goto(frame.url().split('?')[0]);
     await frame.waitForFunction(() => window.TSS_STUDIO_AUDIO, null, {timeout:15000});
     assert.equal(await frame.locator('audio').count(),0,'cached inactive source stays silent');
