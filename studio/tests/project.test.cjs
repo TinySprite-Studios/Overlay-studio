@@ -26,3 +26,24 @@ test('rejects folders without an overlay before adding files', () => {
   assert.throws(() => prepareProject(root, path.join(__dirname, '../..')), /HTML/);
   assert.deepEqual(fs.readdirSync(root), []);
 });
+
+
+test('recent projects migrate, deduplicate and persist list-only removal', () => {
+  const {recentProjects} = require('../recent-projects.cjs');
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tss-recents-'));
+  const file = path.join(folder, 'workspace.json');
+  try {
+    fs.writeFileSync(file, JSON.stringify({root:folder}));
+    const projects = recentProjects(file);
+    assert.equal(projects.list().length,1);
+    projects.remember(folder);
+    projects.remember(folder.toUpperCase());
+    assert.equal(projects.list().length,1);
+    projects.remove(folder,folder);
+    const restored = recentProjects(file);
+    assert.equal(restored.root,folder);
+    assert.equal(restored.initialized,true);
+    assert.deepEqual(restored.list(),[]);
+    assert.ok(fs.existsSync(file));
+  } finally {fs.rmSync(folder,{recursive:true,force:true});}
+});

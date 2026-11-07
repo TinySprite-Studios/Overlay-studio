@@ -40,13 +40,35 @@ const {createProject} = require('../project.cjs');
     assert.equal(await page.locator('#files [data-path="studio"]').count(),0);
     const other = path.join(root, 'other-project');createProject(other);
     await app.evaluate(({dialog}, folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},other);
-    await page.locator('#open').click();
+    await page.locator('#import-project').click();
     await page.waitForFunction(()=>state.name==='other-project');
     assert.equal(await page.locator('[data-test-event]').count(),0);
     assert.equal(await page.evaluate(()=>state.scenes.length),0);
     assert.equal(await page.evaluate(()=>[...documents.keys()].some(name=>name.includes('tss_custom'))),false);
+    assert.equal(await page.locator('#open,#new-project').count(),0);
+    assert.equal(await page.locator('.project-select').count(),2);
+    await page.evaluate(()=>editor.setValue(editor.getValue()+' '));
+    await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:2});});
+    await page.getByTitle(root,{exact:true}).click();
+    assert.equal(await page.evaluate(()=>state.name),'other-project');
+    await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1});});
+    await page.getByTitle(root,{exact:true}).click();
+    await page.waitForFunction(folder=>state.root===folder,root);
+    await page.getByRole('button',{name:'Remove '+path.basename(root)+' from recent projects',exact:true}).click();
+    await page.waitForFunction(()=>state.projects.length===1);
+    assert.ok(fs.existsSync(path.join(root,'tss-events.json')));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root,'.studio-data/workspace.json'))).projects.includes(root),false);
+    const fresh=path.join(root,'created-project');fs.mkdirSync(fresh);
+    await app.evaluate(({dialog},folder)=>{
+      dialog.showMessageBox=async()=>{throw Error('Unexpected choice popup');};
+      dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});
+    },fresh);
+    await page.locator('#create-project').click();
+    await page.waitForFunction(folder=>state.root===folder,fresh);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(fresh,'tss-events.json'))).events,[]);
+    assert.equal(await page.locator('.project-select').count(),2);
     assert.deepEqual(errors,[]);
-    console.log('PASS: custom scene controls, event settings and preview delivery, developer files, hidden update button.');
+    console.log('PASS: custom scene controls, event settings and preview delivery, developer files, hidden update button, recent project switching, removal, and direct creation.');
   } finally {
     if(app){await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().forEach(win=>win.removeAllListeners('close')));await app.close();}
     fs.rmSync(root,{recursive:true,force:true,maxRetries:5,retryDelay:200});

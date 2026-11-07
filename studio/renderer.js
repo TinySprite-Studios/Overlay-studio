@@ -70,8 +70,27 @@ function showView(next){
   if(next==='scenes'&&!selectedScene&&state?.scenes.length)selectScene(state.scenes[0].id).catch(report);
   requestAnimationFrame(()=>{scale();editor?.layout();});
 }
+function renderProjects() {
+  const list = $('recent-projects');list.replaceChildren();
+  for (const project of state.projects) {
+    const row = document.createElement('div');row.className='recent-project';
+    const selected = project.root.toLowerCase() === state.root.toLowerCase();
+    row.classList.toggle('active',selected);
+    const open = document.createElement('button');open.className='project-select';open.title=project.root;
+    open.setAttribute('aria-current',String(selected));open.dataset.project=project.root;
+    const name=document.createElement('strong');name.textContent=project.name;
+    const folder=document.createElement('small');folder.textContent=project.root;
+    open.append(name,folder);open.onclick=()=>{if(!selected)changeProject('select-project',project.root).catch(report);};
+    const remove=document.createElement('button');remove.className='project-remove';
+    remove.title='Remove from list (keep files)';remove.setAttribute('aria-label','Remove '+project.name+' from recent projects');
+    remove.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg>';
+    remove.onclick=async()=>{try{applyState(await call('forget-project',project.root));notice('Removed from recent projects. Files kept on disk.');}catch(error){report(error);}};
+    row.append(open,remove);list.append(row);
+  }
+  if (!state.projects.length) list.textContent='No recent projects.';
+}
 function applyState(next){
-  state=next;$('project-name').textContent=state.name;$('project-path').textContent=state.root;$('project-path').title=state.root;
+  state=next;renderProjects();
   $('server-status').textContent='OBS SERVER · '+state.obsURL.replace('http://','');renderFiles();renderPreviewFiles();renderScenes();if(!eventsDirty)renderEvents();setRunning(state.running);
 }
 function renderPreviewFiles(){const current=$('preview-file').value;$('preview-file').replaceChildren();for(const file of state.files.filter(f=>f.type!=='directory'&&f.name.endsWith('.html'))){const option=new Option(state.scenes.find(s=>s.file===file.name)?.config.name||file.name,file.name);$('preview-file').append(option);}const names=[...$('preview-file').options].map(option=>option.value);$('preview-file').value=names.includes(current)?current:['overlays/overlay-horizontal.html','overlay-horizontal.html',state.scenes[0]?.file,...names].find(name=>names.includes(name))||'';}
@@ -83,9 +102,9 @@ function refresh(){
   $('preview-label').textContent=live?'OBS OUTPUT':'LOCAL PREVIEW';$('live-hint').hidden=!live;document.querySelectorAll('[data-alert], [data-test-event]').forEach(b=>b.disabled=live);scale();
 }
 function setRunning(value){running=value;$('run').disabled=value;$('stop').disabled=!value;$('run-status').textContent=value?'● Runner active':'● Runner stopped';$('run-status').classList.toggle('running',value);$('console-input').disabled=!value;}
-async function changeProject(method){
+async function changeProject(method,...args){
   if(switching)return;if(dirty()){const choice=await call('resolve-close','your project before switching');if(choice===2)return;if(choice===0)await saveAll();}
-  stopSoundPreview();switching=true;try{const next=await call(method);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;eventsDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();showView('workspace');notice('Opened '+next.name);}finally{switching=false;}
+  stopSoundPreview();switching=true;try{const next=await call(method,...args);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;eventsDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();showView('workspace');notice('Opened '+next.name);}finally{switching=false;}
 }
 function renderScenes(){
   $('scene-count').textContent=state.scenes.length;$('scene-cards').replaceChildren();
@@ -173,7 +192,7 @@ async function toggleDeveloperMode(){
 }
 action('developer-mode',toggleDeveloperMode);
 action('save',save);action('save-all',saveAll);action('run',async()=>{await saveAll();await call('run');showView('console');});action('stop',()=>call('stop'));
-for(const method of ['open','copy','new-project'])action(method,()=>changeProject(method));
+for(const method of ['import-project','copy','create-project'])action(method,()=>changeProject(method));
 action('export',async()=>{await saveAll();const result=await call('export');if(result)notice('Project exported to '+result.destination);});
 action('import-assets',async()=>{const result=await call('import-assets');if(result){applyState(result.state);if(selectedScene){const form=$('scene-form');assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,form.elements.background.value);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,form.elements.logo.value);assetOptions('scene-audio',audioExtensions,form.elements.audio.value);}refreshSoundOptions();expanded.add('assets');renderFiles();notice('Imported '+result.imported.length+' assets');}});
 action('folder',()=>call('folder'));action('refresh',refresh);action('copy-url',copyURL);action('obs-copy',copyURL);

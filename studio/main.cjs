@@ -1,5 +1,6 @@
 const {app, BrowserWindow, ipcMain, dialog, clipboard, shell, Menu} = require('electron');
 const {autoUpdater} = require('electron-updater');
+const {recentProjects} = require('./recent-projects.cjs');
 const {createUpdates} = require('./updates.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -10,7 +11,7 @@ const {prepareProject, initializeProject, createProject} = require('./project.cj
 const {spawn} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
 const {resolveFile, list, editable, media} = require('./workspace.cjs');
-let updates, updateTimer, win, root, server, published, previewURL, child, watcher, refreshTimer, closing = false;
+let projects, updates, updateTimer, win, root, server, published, previewURL, child, watcher, refreshTimer, closing = false;
 const testRoot=process.env.TSS_STUDIO_TEST_ROOT;
 if(testRoot)app.setPath('userData',path.join(testRoot,'.studio-data'));
 if(!testRoot&&!app.requestSingleInstanceLock())app.quit();
@@ -43,7 +44,7 @@ function state() {
   let projectEvents;
   try {projectEvents = events.read(root);}
   catch(error) {projectEvents = {settings:{events:[],colours:{},sounds:{}},error:'tss-events.json: '+error.message};}
-  return {root, name:path.basename(root), files:list(root), previewURL, obsURL:published.url, events:projectEvents, scenes:scenes.scenes(root), presets:Object.entries(scenes.presets).map(([type])=>scenes.defaults(type)), running:!!child};
+  return {root, projects:projects.list(), name:path.basename(root), files:list(root), previewURL, obsURL:published.url, events:projectEvents, scenes:scenes.scenes(root), presets:Object.entries(scenes.presets).map(([type])=>scenes.defaults(type)), running:!!child};
 }
 async function stop() {
   const active = child;
@@ -122,22 +123,27 @@ ipcMain.handle('studio', async (event, method, ...args) => {
       fs.writeFileSync(file,'',{flag:'wx'}); return state();
     }
     case 'new-folder': {fs.mkdirSync(resolveFile(root,args[0]),{recursive:true});return state();}
-    case 'open': case 'copy': case 'new-project': case 'export': {
+    case 'forget-project': {
+      if (!projects.has(args[0])) throw Error('This project is not in the recent list.');
+      projects.remove(args[0], root);
+      return state();
+    }
+    case 'select-project': {
+      if (child) throw Error('Stop the runner before switching projects.');
+      const selected = args[0];
+      if (!projects.has(selected)) throw Error('This project is not in the recent list.');
+      if (!fs.existsSync(selected) || !fs.statSync(selected).isDirectory()) throw Error('Project folder is missing. Import it from its new location or remove it from the list.');
+      root = selected; projects.remember(root); watch(); return state();
+    }
+    case 'import-project': case 'copy': case 'create-project': case 'export': {
       if (child && method!=='export') throw Error('Stop the runner before switching projects.');
-      let importOverlay = method === 'open';
-      if (method === 'new-project') {
-        const choice = await dialog.showMessageBox(win, {type:'question', title:'New overlay project',
-          message:'How would you like to start?', detail:'Import opens your overlay folder and adds missing support files. Your overlay files are kept.',
-          buttons:['Import overlay folder', 'Create empty project', 'Cancel'], defaultId:0, cancelId:2});
-        if (choice.response === 2) return null;
-        importOverlay = choice.response === 0;
-      }
+      const importOverlay = method === 'import-project';
       const result = await dialog.showOpenDialog(win,{title:importOverlay ? 'Choose your overlay folder' : 'Choose an empty folder for your project',properties:['openDirectory','createDirectory']});
       if (result.canceled) return null;
       const selected = result.filePaths[0];
       if (!importOverlay) {
         if (fs.readdirSync(selected).length) throw Error('Choose an empty folder so existing files stay safe.');
-        if(method==='new-project')createProject(selected);
+        if(method==='create-project')createProject(selected);
         else copyProject(root,selected);
         if(method==='export')return {destination:selected};
       } else {
@@ -145,7 +151,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
         if(fs.existsSync(path.join(selected,'tss-events.json')))initializeProject(selected);
         else prepareProject(selected, template());
       }
-      root = selected; fs.writeFileSync(path.join(app.getPath('userData'),'workspace.json'),JSON.stringify({root})); watch(); return state();
+      root = selected; projects.remember(root); watch(); return state();
     }
     case 'run': run(); return true;
     case 'stop': await stop(); return true;
@@ -198,12 +204,10 @@ app.whenReady().then(async () => {
   });
   root = testRoot || path.join(app.getPath('documents'),'TinySprite Overlay Studio','My Overlay');
   if (!fs.existsSync(root)) createProject(root);
-  try {
-    const saved = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'workspace.json'),'utf8'));
-    if (fs.existsSync(saved.root) && path.resolve(saved.root) !== path.resolve(template())) root = saved.root;
-  } catch {}
-  if(testRoot)root=testRoot;
+  projects = recentProjects(path.join(app.getPath('userData'),'workspace.json'));
+  if (typeof projects.root === 'string' && fs.existsSync(projects.root) && fs.statSync(projects.root).isDirectory() && path.resolve(projects.root) !== path.resolve(template())) root = projects.root;
   initializeProject(root);
+  if (!projects.initialized) projects.remember(root);
   server=await serve(()=>root,0,true);previewURL=server.url;
   try{published=await serve(()=>root,testRoot?0:8791,false);}catch(error){throw Error('The OBS scene server could not start on port 8791. Close the other Studio instance and try again. '+error.message);}
   win = new BrowserWindow({show:!testRoot,width:1500,height:960,minWidth:1050,minHeight:700,frame:false,icon:path.join(__dirname,'../assets/branding/overlay-studio.ico'),backgroundColor:'#101113',title:'TinySprite Overlay Studio',webPreferences:{autoplayPolicy:'no-user-gesture-required',backgroundThrottling:!testRoot,preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});

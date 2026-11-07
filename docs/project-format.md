@@ -1,6 +1,6 @@
 # Project files
 
-Import a project folder with **Open**, or create an empty project. Developer mode edits only that folder. Projects can be copied or exported with their code, settings and assets.
+Import a project folder with **Import overlay project**, or create an empty project. Developer mode edits only that folder. Projects can be copied or exported with their code, settings and assets.
 
 New projects contain `tss-events.json`, `scenes/` and `assets/`. The events file starts with empty definitions. Existing files are never replaced during import.
 
