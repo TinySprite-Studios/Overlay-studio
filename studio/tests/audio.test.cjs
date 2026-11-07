@@ -14,7 +14,7 @@ test('audio settings persist, validate assets, and reach existing and portrait s
     const initial = events.read(root);
     const saved = events.update(root, {sounds:{follow:{file:'assets/cue.mp4',volume:25}}}, initial.revision);
     assert.equal(saved.settings.sounds.follow.volume, 25);
-    assert.equal(saved.settings.sounds.donation.file, '');
+    assert.equal(saved.settings.sounds.donation, undefined);
     for (const file of ['assets/../private.mp3', 'https://example.com/a.mp3', 'assets/test.js', 'assets/missing.mp3']) {
       assert.throws(() => events.update(root, {sounds:{sub:{file}}}, saved.revision));
     }

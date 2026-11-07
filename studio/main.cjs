@@ -6,7 +6,7 @@ const path = require('node:path');
 const {serve} = require('./server.cjs');
 const scenes = require('./scenes.cjs');
 const events = require('./events.cjs');
-const {prepareProject} = require('./project.cjs');
+const {prepareProject, initializeProject, createProject} = require('./project.cjs');
 const {spawn} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
 const {resolveFile, list, editable, media} = require('./workspace.cjs');
@@ -39,7 +39,12 @@ function watch() {
   });
   watcher.on('error', error => log(error.message, 'error'));
 }
-const state = () => ({root, name:path.basename(root), files:list(root), previewURL, obsURL:published.url, events:events.read(root), scenes:scenes.scenes(root), presets:Object.entries(scenes.presets).map(([type])=>scenes.defaults(type)), running:!!child});
+function state() {
+  let projectEvents;
+  try {projectEvents = events.read(root);}
+  catch(error) {projectEvents = {settings:{events:[],colours:{},sounds:{}},error:'tss-events.json: '+error.message};}
+  return {root, name:path.basename(root), files:list(root), previewURL, obsURL:published.url, events:projectEvents, scenes:scenes.scenes(root), presets:Object.entries(scenes.presets).map(([type])=>scenes.defaults(type)), running:!!child};
+}
 async function stop() {
   const active = child;
   if (!active) return;
@@ -123,7 +128,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
       if (method === 'new-project') {
         const choice = await dialog.showMessageBox(win, {type:'question', title:'New overlay project',
           message:'How would you like to start?', detail:'Import opens your overlay folder and adds missing support files. Your overlay files are kept.',
-          buttons:['Import overlay folder', 'Create from templates', 'Cancel'], defaultId:0, cancelId:2});
+          buttons:['Import overlay folder', 'Create empty project', 'Cancel'], defaultId:0, cancelId:2});
         if (choice.response === 2) return null;
         importOverlay = choice.response === 0;
       }
@@ -132,10 +137,14 @@ ipcMain.handle('studio', async (event, method, ...args) => {
       const selected = result.filePaths[0];
       if (!importOverlay) {
         if (fs.readdirSync(selected).length) throw Error('Choose an empty folder so existing files stay safe.');
-        copyProject(method==='new-project'?template():root,selected);
-        if(method==='new-project')scenes.starters(selected);
+        if(method==='new-project')createProject(selected);
+        else copyProject(root,selected);
         if(method==='export')return {destination:selected};
-      } else prepareProject(selected, template());
+      } else {
+        if(path.resolve(selected)===path.resolve(template()))throw Error('Choose a project folder outside the Studio application source.');
+        if(fs.existsSync(path.join(selected,'tss-events.json')))initializeProject(selected);
+        else prepareProject(selected, template());
+      }
       root = selected; fs.writeFileSync(path.join(app.getPath('userData'),'workspace.json'),JSON.stringify({root})); watch(); return state();
     }
     case 'run': run(); return true;
@@ -187,13 +196,14 @@ app.whenReady().then(async () => {
       }
     }
   });
-  root = template();
-  if (app.isPackaged) {
-    root = path.join(app.getPath('documents'),'TinySprite Overlay Studio','My Overlay');
-    if (!fs.existsSync(root)) {copyProject(template(),root);scenes.starters(root);}
-  }
-  try {const saved=JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'workspace.json'),'utf8'));if(fs.existsSync(path.join(saved.root,'start-twitch.cmd')))root=saved.root;}catch{}
+  root = testRoot || path.join(app.getPath('documents'),'TinySprite Overlay Studio','My Overlay');
+  if (!fs.existsSync(root)) createProject(root);
+  try {
+    const saved = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'workspace.json'),'utf8'));
+    if (fs.existsSync(saved.root) && path.resolve(saved.root) !== path.resolve(template())) root = saved.root;
+  } catch {}
   if(testRoot)root=testRoot;
+  initializeProject(root);
   server=await serve(()=>root,0,true);previewURL=server.url;
   try{published=await serve(()=>root,testRoot?0:8791,false);}catch(error){throw Error('The OBS scene server could not start on port 8791. Close the other Studio instance and try again. '+error.message);}
   win = new BrowserWindow({show:!testRoot,width:1500,height:960,minWidth:1050,minHeight:700,frame:false,icon:path.join(__dirname,'../assets/branding/overlay-studio.ico'),backgroundColor:'#101113',title:'TinySprite Overlay Studio',webPreferences:{autoplayPolicy:'no-user-gesture-required',backgroundThrottling:!testRoot,preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});

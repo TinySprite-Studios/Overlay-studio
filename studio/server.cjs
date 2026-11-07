@@ -5,7 +5,25 @@ const scenes = require('./scenes.cjs');
 const {alertSounds} = require('./audio.cjs');
 const events = require('./events.cjs');
 const {resolveFile,media} = require('./workspace.cjs');
-const bridge = `window.EventSource=class extends EventTarget{constructor(){super();window.previewEvents=this}close(){}};window.addEventListener('message',e=>{if(e.source!==parent)return;for(let i=0;i<frames.length;i++)frames[i].postMessage(e.data,location.origin);const {type,data}=e.data||{};if(!['alert','paint','summon','message'].includes(type)||!window.previewEvents)return;const event=new MessageEvent(type,{data:JSON.stringify(data)});if(type==='message')window.previewEvents.onmessage?.(event);else window.previewEvents.dispatchEvent(event)});`;
+const bridge = `(() => {
+  const sources = new Set();
+  window.EventSource=class extends EventTarget {
+    constructor(){super();sources.add(this);window.previewEvents=this;}
+    close(){sources.delete(this);}
+  };
+  window.addEventListener('message', e => {
+    if(e.source!==parent)return;
+    for(let i=0;i<frames.length;i++)frames[i].postMessage(e.data,location.origin);
+    const {type,data}=e.data||{};
+    if(!['alert','paint','summon','message','project-event'].includes(type))return;
+    for(const source of sources){
+      const event=new MessageEvent(type,{data:JSON.stringify(data)});
+      if(type==='message')source.onmessage?.(event);
+      source.dispatchEvent(event);
+    }
+  });
+})();`;
+
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.mp4':'video/mp4','.webm':'video/webm','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.ico':'image/x-icon'};
 async function serve(getRoot, port=0, offline=false) {
   const sockets=new Set();
@@ -28,6 +46,26 @@ async function serve(getRoot, port=0, offline=false) {
       } catch { res.writeHead(400).end('Invalid audio settings.'); }
       return;
     }
+    if (name === '__studio-project.js') {
+      try {
+        const root = getRoot();
+        const sceneFile = new URL(req.url, 'http://localhost').searchParams.get('scene');
+        const scene = scenes.scenes(root).find(scene => scene.file === sceneFile);
+        const script = 'window.TSS_EVENTS = ' + JSON.stringify(events.read(root).settings).replace(/</g, '\\u003c') + ';\n' +
+          (scene ? 'window.TSS_SCENE = ' + JSON.stringify(scene.config).replace(/</g, '\\u003c') + ';\n' : '');
+        res.writeHead(200, {'Content-Type':'text/javascript','Cache-Control':'no-store'}).end(req.method==='HEAD'?undefined:script);
+      } catch {res.writeHead(400).end('Invalid project settings.');}
+      return;
+    }
+    if (/^scenes\/tss_[a-z0-9_-]+\/config.js$/.test(name)) {
+      try {
+        const scene = scenes.read(getRoot(), name.split('/')[1]);
+        if (scene.config.type === 'custom') {
+          res.writeHead(200, {'Content-Type':'text/javascript','Cache-Control':'no-store'}).end(req.method==='HEAD'?undefined:'window.TSS_SCENE = '+JSON.stringify(scene.config).replace(/</g, '\\u003c')+';');
+          return;
+        }
+      } catch {}
+    }
     if(name==='events'){
       if(offline){res.writeHead(410).end();return;}
       const upstream=http.get('http://127.0.0.1:8787/events',response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
@@ -42,7 +80,7 @@ async function serve(getRoot, port=0, offline=false) {
       const headers={'Content-Type':mime[ext]||'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Accept-Ranges':'bytes'};
       if(ext==='.html'){
         if(stat.size>10e6){res.writeHead(413).end();return;}
-        const scripts=(offline?'<script src="/__studio-preview.js"></script>':'')+'<script defer src="/__studio-audio.js?scene='+encodeURIComponent(name)+'"></script>';
+        const scripts=(offline?'<script src="/__studio-preview.js"></script>':'')+'<script src="/__studio-project.js?scene='+encodeURIComponent(name)+'"></script><script defer src="/__studio-audio.js?scene='+encodeURIComponent(name)+'"></script>';
         const body=fs.readFileSync(file,'utf8').replace(/<head[^>]*>/i,match=>match+scripts);
         res.writeHead(200,headers).end(req.method==='HEAD'?undefined:body);return;
       }

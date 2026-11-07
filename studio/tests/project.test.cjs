@@ -15,7 +15,8 @@ test('imports overlay-only folders without replacing artwork or custom settings'
   assert.ok(fs.existsSync(path.join(root, 'start-twitch.cmd')));
   assert.equal(fs.readFileSync(path.join(root, 'config.js'), 'utf8'), '// custom settings');
   assert.equal(fs.readFileSync(path.join(root, 'index.html'), 'utf8'), '<h1>My overlay</h1>');
-  assert.equal(fs.existsSync(path.join(root, 'scenes')), false);
+  assert.equal(fs.existsSync(path.join(root, 'scenes')), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'tss-events.json'))).events, []);
   prepareProject(root, path.join(__dirname, '../..'));
   assert.equal(fs.readFileSync(path.join(root, 'config.js'), 'utf8'), '// custom settings');
 });

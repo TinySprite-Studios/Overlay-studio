@@ -14,7 +14,11 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),asse
     await page.waitForFunction(()=>typeof editor!=='undefined'&&editor&&active==='config.js');
   assert.match(await page.locator('#update-status').textContent(),/installed GitHub release/);
   assert.equal(await page.locator('#update-check').isDisabled(),true);
+  assert.equal(await page.locator('#update-check').isVisible(),false);
   async function send(status,extra={}){await app.evaluate(({BrowserWindow},message)=>BrowserWindow.getAllWindows()[0].webContents.send('studio:event',message),{type:'update',status,currentVersion:'1.2.0',version:'1.3.0',...extra});}
+  await send('current');
+  assert.equal(await page.locator('#update-download').isVisible(),false);
+  assert.equal(await page.locator('#update-check').isVisible(),false);
   await send('available');await page.locator('#update-download').waitFor();
   await send('downloading',{percent:42});await page.waitForFunction(()=>document.querySelector('#update-status').textContent.includes('42%'));
   await send('downloaded');await page.locator('#update-install').waitFor();

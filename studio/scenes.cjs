@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {resolveFile, list} = require('./workspace.cjs');
 const {sound, checkFile} = require('./audio.cjs');
+const {values} = require('./fields.cjs');
 const presets = {
   starting:{name:'Starting Soon',title:'Starting soon',subtitle:'Get comfortable. Something good is loading.',countdown:300},
   brb:{name:'Be Right Back',title:'Be right back',subtitle:'Taking a tiny break. Stay a little longer.',countdown:0},
@@ -12,7 +13,8 @@ const presets = {
   blank:{name:'Blank Canvas',title:'',subtitle:'',countdown:0}
 };
 function normalize(value) {
-  if (!value || !presets[value.type]) throw Error('Choose a scene template.');
+  if (!value || (!presets[value.type] && value.type !== 'custom')) throw Error('Choose a scene template.');
+  if (value.type === 'custom') return {...value, name:String(value.name || 'Custom scene').slice(0,80), layout:value.layout === 'vertical' ? 'vertical' : 'horizontal', values:values(value.fields, value.values)};
   const text = (key, max=180) => String(value[key] ?? '').slice(0,max);
   const colour = (key, fallback) => /^#[0-9a-f]{6}$/i.test(value[key]) ? value[key] : fallback;
   const background = text('background',500);
@@ -22,14 +24,14 @@ function normalize(value) {
   if (!Number.isFinite(audioDelay) || audioDelay < 0 || audioDelay > 3600) throw Error('Music delay must be between 0 and 3600 seconds.');
   if (logo && (!logo.startsWith('assets/') || logo.split('/').some(p=>p.startsWith('.')) || !/\.(png|jpe?g|webp|gif|svg)$/i.test(logo))) throw Error('Choose an imported logo from assets.');
   if (background && (!background.startsWith('assets/') || background.split('/').some(p=>p.startsWith('.')) || !/\.(png|jpe?g|webp|gif|svg|mp4|webm)$/i.test(background))) throw Error('Choose an imported image or video from assets.');
-  return {audioDelay,audio:audio.file,audioVolume:audio.volume,version:1,type:value.type,name:text('name',80).trim()||presets[value.type].name,title:text('title'),subtitle:text('subtitle',300),channel:text('channel',80),social:text('social',160),accent:colour('accent','#e34855'),base:colour('base','#10121a'),layout:value.layout==='vertical'?'vertical':'horizontal',style:['aurora','grid','minimal'].includes(value.style)?value.style:'aurora',countdown:Math.max(0,Math.min(86400,Math.floor(Number(value.countdown)||0))),countdownEnd:text('countdownEnd',120)||'We’re getting ready…',background,overlay:Math.max(0,Math.min(100,Number(value.overlay) || 0)),logo:text('logo',500),animate:value.animate!==false};
+  return {...value,values:values(value.fields,value.values),audioDelay,audio:audio.file,audioVolume:audio.volume,version:1,type:value.type,name:text('name',80).trim()||presets[value.type].name,title:text('title'),subtitle:text('subtitle',300),channel:text('channel',80),social:text('social',160),accent:colour('accent','#e34855'),base:colour('base','#10121a'),layout:value.layout==='vertical'?'vertical':'horizontal',style:['aurora','grid','minimal'].includes(value.style)?value.style:'aurora',countdown:Math.max(0,Math.min(86400,Math.floor(Number(value.countdown)||0))),countdownEnd:text('countdownEnd',120)||'We’re getting ready…',background,overlay:Math.max(0,Math.min(100,Number(value.overlay) || 0)),logo:text('logo',500),animate:value.animate!==false};
 }
 function defaults(type) {return normalize({type,...presets[type],channel:'YOUR CHANNEL',social:'Follow along · @yourchannel',accent:'#e34855',base:'#10121a',style:'aurora',overlay:65,animate:true});}
 function sceneDir(root,id) {
   if (typeof id !== 'string' || !/^tss_[a-z0-9_-]+$/.test(id)) throw Error('Invalid scene ID.');
   return resolveFile(root,'scenes/'+id);
 }
-function revision(dir) {return crypto.createHash('sha256').update(fs.readFileSync(path.join(dir,'scene.json'))).update(fs.readFileSync(path.join(dir,'config.js'))).digest('hex');}
+function revision(dir) {return crypto.createHash('sha256').update(fs.readFileSync(path.join(dir,'scene.json'))).update(fs.existsSync(path.join(dir,'config.js'))?fs.readFileSync(path.join(dir,'config.js')):'').digest('hex');}
 function liveScene(root) {
   const file=resolveFile(root,'tss-theme.js');
   const text=fs.existsSync(file)?fs.readFileSync(file,'utf8'):'';
@@ -94,7 +96,7 @@ function update(root,id,input,expected){
     fs.writeFileSync(resolveFile(root,'tss-theme.js'),'window.TSS_THEME = '+JSON.stringify({accent:config.accent,audio:config.audio,audioVolume:config.audioVolume,audioDelay:config.audioDelay})+';\n');
     return liveScene(root);
   }
-  const current=read(root,id),dir=sceneDir(root,id);if(current.revision!==expected)throw Error('Scene settings changed on disk. Reload the scene before applying settings.');const config=normalize(input);checkFile(root,{file:config.audio});writeConfig(dir,config);return read(root,id);}
+  const current=read(root,id),dir=sceneDir(root,id);if(current.revision!==expected)throw Error('Scene settings changed on disk. Reload the scene before applying settings.');const config=normalize({...current.config,...input,fields:current.config.fields});checkFile(root,{file:config.audio});writeConfig(dir,config);return read(root,id);}
 function bundled(root, source) {
   if(path.resolve(root)===path.resolve(source))return;
   const files=list(source);

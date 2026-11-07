@@ -78,7 +78,7 @@ function renderPreviewFiles(){const current=$('preview-file').value;$('preview-f
 function dimensions(){return $('layout').value==='vertical'?[1080,1920]:[1920,1080];}
 function scale(){const [w,h]=dimensions(),wrap=$('stage').parentElement;const factor=Math.max(.01,Math.min((wrap.clientWidth-32)/w,(wrap.clientHeight-32)/h));Object.assign($('stage').style,{width:w*factor+'px',height:h*factor+'px'});Object.assign($('preview').style,{width:w+'px',height:h+'px',transform:`scale(${factor})`});}
 function refresh(){
-  if(!state)return;stopSoundPreview();const live=$('preview-mode').value==='live',name=$('preview-file').value||'overlays/overlay-horizontal.html';
+  if(!state)return;stopSoundPreview();if(!$('preview-file').value){$('preview').removeAttribute('src');return;}const live=$('preview-mode').value==='live',name=$('preview-file').value||'overlays/overlay-horizontal.html';
   $('preview').src=(live?state.obsURL:state.previewURL)+'/'+name.split('/').map(encodeURIComponent).join('/')+'?studio='+Date.now();
   $('preview-label').textContent=live?'OBS OUTPUT':'LOCAL PREVIEW';$('live-hint').hidden=!live;document.querySelectorAll('[data-alert], [data-test-event]').forEach(b=>b.disabled=live);scale();
 }
@@ -94,9 +94,38 @@ function renderScenes(){
     const label=document.createElement('small');label.textContent=scene.config.type;const name=document.createElement('strong');name.textContent=scene.config.name;const size=document.createElement('span');size.textContent=scene.config.layout==='vertical'?'1080 × 1920':'1920 × 1080';card.append(label,name,size);card.onclick=()=>selectScene(scene.id).catch(report);$('scene-cards').append(card);}
 }
 function assetOptions(id,regex,value){const select=$(id);select.replaceChildren(new Option('None',''));for(const file of state.files.filter(f=>f.name.startsWith('assets/')&&f.type==='file'&&regex.test(f.name)))select.append(new Option(file.name.slice(7),file.name));if(value&&![...select.options].some(o=>o.value===value))select.append(new Option(value+' (missing)',value));select.value=value||'';}
+function renderFields(container, fields = [], values = {}) {
+  container.replaceChildren();
+  for (const field of fields) {
+    const label = document.createElement('label');
+    label.textContent = field.label || field.key;
+    const input = document.createElement(field.type === 'select' ? 'select' : field.type === 'textarea' ? 'textarea' : 'input');
+    input.dataset.setting = field.key;
+    if (field.type === 'select') {
+      for (const option of field.options || []) input.append(new Option(typeof option === 'object' ? option.label : option, typeof option === 'object' ? option.value : option));
+    } else if (field.type !== 'textarea') input.type = ({boolean:'checkbox', color:'color', number:'number'})[field.type] || 'text';
+    for (const key of ['min', 'max', 'step', 'maxLength']) if (field[key] != null) input[key] = field[key];
+    if (field.type === 'number' && field.step == null) input.step = 'any';
+    input.required = !!field.required;
+    const value = values[field.key] ?? field.default ?? '';
+    if (input.type === 'checkbox') input.checked = !!value;
+    else input.value = value;
+    label.append(input);
+    if (field.description) {const help=document.createElement('small');help.textContent=field.description;label.append(help);}
+    container.append(label);
+  }
+}
+function fieldValues(container) {
+  return Object.fromEntries([...container.querySelectorAll('[data-setting]')].map(input => [input.dataset.setting, input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value]));
+}
 function fillScene(){
   $('scene-empty').hidden=!!selectedScene;$('scene-form').hidden=!selectedScene;$('scene-code').disabled=!selectedScene;$('scene-vertical').disabled=!selectedScene;
   if(!selectedScene)return;
+  const custom = selectedScene.config.type === 'custom';
+  for(const help of $('scene-form').querySelectorAll(':scope > .field-help'))help.hidden=custom;
+  $('scene-form').querySelector('.form-grid').hidden = custom;
+  for(const input of $('scene-form').querySelector('.form-grid').querySelectorAll('input,select,textarea'))input.disabled=custom;
+  renderFields($('scene-custom-settings'),selectedScene.config.fields,selectedScene.config.values);
   $('scene-form').classList.toggle('live-overlay',!!selectedScene.external);
   $('scene-form').classList.toggle('portrait-copy',!!selectedScene.portrait);$('portrait-help').hidden=!selectedScene.portrait;
   const c=selectedScene.config;assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,c.background);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,c.logo);assetOptions('scene-audio',audioExtensions,c.audio);
@@ -110,7 +139,7 @@ async function selectScene(id){
 async function saveScene(){
   if(!selectedScene||savingScene)return;if(!$('scene-form').reportValidity())throw Error('Complete the scene settings first.');
   const prefix='scenes/'+selectedScene.id+'/';for(const name of selectedScene.external?['tss-theme.js']:[prefix+'config.js',prefix+'scene.json'])if(documents.has(name)&&isDirty(documents.get(name)))throw Error('Save or close your edits to '+name+' before applying visual settings.');
-  const values=Object.fromEntries(new FormData($('scene-form')).entries());values.animate=$('scene-form').elements.namedItem('animate').checked;
+  const values=Object.fromEntries(new FormData($('scene-form')).entries());values.animate=$('scene-form').elements.namedItem('animate').checked;values.values=fieldValues($('scene-custom-settings'));
   savingScene=true;try{const result=await call('scene-update',selectedScene.id,{...selectedScene.config,...values},selectedScene.revision);sceneDirty=false;selectedScene=result.scene;applyState(result.state);fillScene();$('preview-file').value=selectedScene.file;$('layout').value=selectedScene.config.layout;refresh();notice('Scene saved · refresh its OBS browser source to see the update');}finally{savingScene=false;}
 }
 $('scene-form').oninput=()=>{sceneDirty=true;$('scene-apply').textContent='Apply changes •';};
@@ -161,7 +190,7 @@ action('new-scene',async()=>{if(!(await settleScene()))return;$('scene-template'
 $('scene-template').onchange=()=>$('new-scene-name').value=state.presets.find(p=>p.type===$('scene-template').value).name;
 $('create-scene-form').onsubmit=async event=>{event.preventDefault();try{const preset=state.presets.find(p=>p.type===$('scene-template').value);const result=await call('scene-create',{...preset,name:$('new-scene-name').value,layout:$('new-scene-layout').value});applyState(result.state);await selectScene(result.scene.id);$('scene-dialog').close();showView('scenes');notice('Scene created · customise it on the right');}catch(error){$('scene-error').textContent=error.message;}};
 action('starter-scenes',async()=>{if(!(await settleScene()))return;applyState(await call('scene-starters'));await selectScene(state.scenes[0].id);notice('Starter scenes added. Existing scenes were kept.');});
-action('scene-code',async()=>{if(!selectedScene||!(await settleScene()))return;showView('workspace');await openFile(selectedScene.portrait?selectedScene.file.replace('index.html','portrait-source.html'):selectedScene.file);});
+action('scene-code',async()=>{if(!selectedScene||!(await settleScene()))return;if(!developerMode)await toggleDeveloperMode();showView('workspace');await openFile(selectedScene.portrait?selectedScene.file.replace('index.html','portrait-source.html'):selectedScene.file);});
 action('scene-vertical',async()=>{
   if(!selectedScene||!(await settleScene()))return;
   $('vertical-error').textContent='';$('vertical-method').value='fit';
@@ -221,6 +250,8 @@ action('force-apply',async()=>{
 function renderUpdate(update){
   const descriptions={idle:'Check for a new Studio release.',checking:'Checking GitHub for updates...',current:'Studio is up to date.',available:'Studio '+update.version+' is available.',downloading:(update.downloadMode==='full'?'Downloading full update':update.downloadMode==='changes'?'Downloading changed data':'Preparing update')+': '+(update.percent||0)+'%'+(update.total?' \u00b7 '+(update.transferred/1048576).toFixed(1)+' / '+(update.total/1048576).toFixed(1)+' MB':''),downloaded:'Studio '+update.version+' is ready. Restarting stops the overlay while the update installs.',installing:'Installing update...',error:update.message,disabled:update.message};
   $('update-status').textContent='v'+update.currentVersion+' | '+descriptions[update.status];
+  $('update-check').hidden=!(update.status==='error'&&update.version);
+  $('update-check').textContent='Retry update';
   $('update-check').disabled=['disabled','checking','downloading','downloaded','installing','available'].includes(update.status);
   $('update-download').hidden=update.status!=='available';
   $('update-install').hidden=update.status!=='downloaded';
@@ -238,18 +269,23 @@ function renderEvents(){
   const settings=state.events.settings;eventsRevision=state.events.revision;renderEventTests(settings);
   $('event-settings').replaceChildren();$('event-colours').replaceChildren();
   for(const event of settings.events){
-    const label=document.createElement('label');label.textContent=event.canonical+' \u00b7 '+(event.trigger==='bits'?'Bits Power-up':'Channel points');
-    const input=document.createElement('input');input.value=event.name;input.name=event.id;input.required=true;input.maxLength=80;label.append(input);$('event-settings').append(label);
+    const label=document.createElement('label');label.textContent=(event.label||event.canonical||event.id)+' \u00b7 '+(event.trigger||'custom');
+    const input=document.createElement('input');input.value=event.name;input.dataset.eventName=event.id;input.required=true;input.maxLength=80;label.append(input);$('event-settings').append(label);
+    const fields=document.createElement('div');fields.className='form-grid';fields.dataset.eventFields=event.id;renderFields(fields,event.fields,event.values);$('event-settings').append(fields);
   }
   for(const [name,colour]of Object.entries(settings.colours||{})){
     const label=document.createElement('label');label.textContent=name;
     const input=document.createElement('input');input.type='color';input.value=colour;input.name='colour-'+name;label.append(input);$('event-colours').append(label);
   }
   const paint=settings.events.some(event=>event.id==='paint'||event.id==='paint-pro');
-  document.querySelector('.manual-colour').hidden=!paint;$('palette-heading').hidden=!paint;
+  document.querySelector('.manual-colour').hidden=!paint;$('palette-heading').hidden=!Object.keys(settings.colours).length;
   renderAlertSounds(settings.sounds || {});
-  $('events-save').hidden=false;
-  if(!settings.events.length)$('event-settings').textContent='No configurable events have been added to this project.';
+  $('project-sounds').hidden=!Object.keys(settings.sounds || {}).length;
+  document.querySelectorAll('[data-alert]').forEach(button=>button.hidden=!Object.hasOwn(settings.sounds || {},button.dataset.alert));
+  $('playground').hidden=!state.files.some(file=>file.name==='overlays/offline-preview.html');
+  document.querySelector('.test-controls').hidden=!Object.keys(settings.sounds || {}).length&&$('playground').hidden;
+  $('events-save').hidden=!settings.events.length&&!Object.keys(settings.colours).length&&!Object.keys(settings.sounds||{}).length;
+  if(!settings.events.length)$('event-settings').textContent=state.events.error||'No events yet. Your developer can define them in the project tss-events.json file.';
   $('events-save').textContent='Apply changes';
 }
 async function saveEvents(){
@@ -257,9 +293,9 @@ async function saveEvents(){
   const openSettings=documents.get('tss-events.json');
   if(openSettings&&isDirty(openSettings))throw Error('Save or close your code edits to tss-events.json first.');
   const settings=state.events.settings,form=$('events-form').elements;
-  const events=settings.events.map(event=>({...event,name:form.namedItem(event.id).value}));
+  const events=settings.events.map(event=>({...event,name:[...$('event-settings').querySelectorAll('[data-event-name]')].find(input=>input.dataset.eventName===event.id).value,values:fieldValues([...$('event-settings').querySelectorAll('[data-event-fields]')].find(group=>group.dataset.eventFields===event.id))}));
   const colours=Object.fromEntries(Object.keys(settings.colours||{}).map(name=>[name,form.namedItem('colour-'+name).value]));
-  const sounds=Object.fromEntries(Object.keys(alertSoundLabels).map(kind=>[kind,{file:$('sound-'+kind).value,volume:Number($('sound-volume-'+kind).value)}]));
+  const sounds=Object.fromEntries(Object.keys(settings.sounds||{}).filter(kind=>alertSoundLabels[kind]).map(kind=>[kind,{file:$('sound-'+kind).value,volume:Number($('sound-volume-'+kind).value)}]));
   const result=await call('events-update',{events,colours,sounds},eventsRevision);
   eventsDirty=false;applyState(result);refresh();notice('Event settings saved. Refresh OBS browser sources to apply sound changes. Reward names must match Twitch.');
 }
@@ -269,7 +305,7 @@ $('events-form').onsubmit=event=>{event.preventDefault();saveEvents().catch(repo
 function renderEventTests(settings){
   const controls=$('event-tests');
   controls.replaceChildren();
-  const events=settings.events.filter(event=>['paint','paint-pro','summon','feed','hydrate','tomato'].includes(event.id));
+  const events=settings.events;
   controls.hidden=!events.length;
   const label=document.createElement('span');label.textContent='TEST EVENT';controls.append(label);
   const colour=document.createElement('select');colour.setAttribute('aria-label','Test paint colour');
@@ -281,6 +317,9 @@ function renderEventTests(settings){
     button.disabled=$('preview-mode').value==='live';button.title='Test in local preview';
     button.onclick=()=>{
       if($('preview-mode').value==='live')return;
+      const data={...event.testData,id:event.id,name:'TinySprite',values:event.values};
+      $('preview').contentWindow.postMessage({type:'project-event',data},state.previewURL);
+      if(!['paint','paint-pro','summon','feed','hydrate','tomato'].includes(event.id)){notice('Preview event sent: '+event.name);return;}
       const paint=event.id.startsWith('paint'),startsAt=Date.now();
       const active={id:crypto.randomUUID(),name:'TinySprite',startsAt,endsAt:startsAt+(paint?10000:15000)};
       if(paint)Object.assign(active,{colour:colour.value,hex:settings.colours[colour.value]||'#ff4545'});
@@ -318,7 +357,7 @@ async function previewSound(file,volume,delay=0){
 }
 function renderAlertSounds(sounds){
   $('alert-sounds').replaceChildren();
-  for(const [kind,title]of Object.entries(alertSoundLabels)){
+  for(const [kind,title]of Object.entries(alertSoundLabels).filter(([kind])=>Object.hasOwn(sounds,kind))){
     const group=document.createElement('div');group.className='sound-setting';
     const label=document.createElement('label');label.textContent=title;
     const select=document.createElement('select');select.id='sound-'+kind;label.append(select);

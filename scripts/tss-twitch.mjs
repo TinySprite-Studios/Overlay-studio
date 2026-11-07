@@ -1,4 +1,4 @@
-import {eventSettings, routeEvent} from './tss-events.mjs';
+import {eventSettings, routeEvent, projectEvents} from './tss-events.mjs';
 import { serveFile } from './public-files.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -303,6 +303,9 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
       } else if (metadata.message_type === 'notification' && !seen.has(metadata.message_id)) {
         seen.add(metadata.message_id);
         if (seen.size > 1000) seen.delete(seen.values().next().value);
+        for (const data of projectEvents(payload.subscription.type, payload.event, eventSettings(root))) {
+          for (const client of clients) client.write(`event: project-event\ndata: ${JSON.stringify(data)}\n\n`);
+        }
         if (['channel.custom_power_up_redemption.add', 'channel.channel_points_custom_reward_redemption.add'].includes(payload.subscription.type)) {
           payload.event = routeEvent(payload.event, eventSettings(root));
         }

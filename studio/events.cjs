@@ -2,13 +2,25 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const {resolveFile} = require('./workspace.cjs');
 const {alertSounds, checkFile} = require('./audio.cjs');
+const {values} = require('./fields.cjs');
 const filename = 'tss-events.json';
 const revision = text => crypto.createHash('sha256').update(text).digest('hex');
 
 function read(root) {
   const file = resolveFile(root, filename);
   const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-  return {settings: text ? JSON.parse(text) : {events: [], colours: {}}, revision: revision(text)};
+  const settings = text.trim() ? JSON.parse(text) : {};
+  settings.events ??= [];
+  settings.colours ??= {};
+  settings.sounds ??= text.trim() && !settings.version ? alertSounds() : {};
+  if (!Array.isArray(settings.events)) throw Error('tss-events.json: events must be an array.');
+  const ids = new Set();
+  for (const event of settings.events) {
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(event.id) || ids.has(event.id)) throw Error('tss-events.json: each event needs a unique ID.');
+    ids.add(event.id);
+    event.values = values(event.fields, event.values);
+  }
+  return {settings, revision: revision(text)};
 }
 
 function update(root, input, expected) {
@@ -21,14 +33,15 @@ function update(root, input, expected) {
     const key = event.trigger + ':' + name.toLowerCase().replace(/\s+/g, ' ');
     if (!name || name.length > 80 || names.has(key)) throw Error('Give each event a unique name of 1–80 characters.');
     names.add(key);
-    return {...event, name};
+    return {...event, name, values:values(event.fields, change?.values ?? event.values)};
   });
   const colours = {...current.settings.colours};
   for (const key of Object.keys(colours)) {
     if (!/^#[0-9a-f]{6}$/i.test(input.colours?.[key])) throw Error('Choose a valid colour for ' + key + '.');
     colours[key] = input.colours[key];
   }
-  const sounds = alertSounds(input.sounds ?? current.settings.sounds);
+  const normalizedSounds = alertSounds(input.sounds ?? current.settings.sounds);
+  const sounds = Object.fromEntries(Object.keys(input.sounds ?? current.settings.sounds).map(key => [key, normalizedSounds[key]]).filter(([,value]) => value));
   for (const value of Object.values(sounds)) checkFile(root, value);
   const settings = {...current.settings, events, colours, sounds};
   fs.writeFileSync(resolveFile(root, filename), JSON.stringify(settings, null, 2) + '\n');
