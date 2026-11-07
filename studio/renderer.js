@@ -143,7 +143,6 @@ function fillScene(){
   $('scene-empty').hidden=!!selectedScene;$('scene-form').hidden=!selectedScene;$('scene-code').disabled=!selectedScene;$('scene-vertical').disabled=!selectedScene;
   if(!selectedScene)return;
   const custom = selectedScene.config.type === 'custom';
-  for(const help of $('scene-form').querySelectorAll(':scope > .field-help'))help.hidden=custom;
   $('scene-form').querySelector('.form-grid').hidden = custom;
   for(const input of $('scene-form').querySelector('.form-grid').querySelectorAll('input,select,textarea'))input.disabled=custom;
   renderFields($('scene-custom-settings'),selectedScene.config.fields,selectedScene.config.values);
@@ -151,6 +150,7 @@ function fillScene(){
   $('scene-form').classList.toggle('portrait-copy',!!selectedScene.portrait);$('portrait-help').hidden=!selectedScene.portrait;
   const c=selectedScene.config;assetOptions('scene-background',/\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,c.background);assetOptions('scene-logo',/\.(png|jpe?g|gif|svg|webp)$/i,c.logo);assetOptions('scene-audio',audioExtensions,c.audio);
   for(const [key,value]of Object.entries(c)){const field=$('scene-form').elements.namedItem(key);if(!field)continue;if(field.type==='checkbox')field.checked=value;else field.value=value;}
+  window.sceneSettings?.update(selectedScene);
   $('scene-apply').textContent='Apply changes';
 }
 async function selectScene(id){
@@ -158,9 +158,13 @@ async function selectScene(id){
   if(selectedScene){$('preview-file').value=selectedScene.file;$('layout').value=selectedScene.config.layout;refresh();}
 }
 async function saveScene(){
-  if(!selectedScene||savingScene)return;if(!$('scene-form').reportValidity())throw Error('Complete the scene settings first.');
+  if(!selectedScene||savingScene)return;
+  window.sceneSettings?.revealInvalid();
+  if(!$('scene-form').reportValidity())throw Error('Complete the scene settings first.');
   const prefix='scenes/'+selectedScene.id+'/';for(const name of selectedScene.external?['tss-theme.js']:[prefix+'config.js',prefix+'scene.json'])if(documents.has(name)&&isDirty(documents.get(name)))throw Error('Save or close your edits to '+name+' before applying visual settings.');
-  const values=Object.fromEntries(new FormData($('scene-form')).entries());values.animate=$('scene-form').elements.namedItem('animate').checked;values.values=fieldValues($('scene-custom-settings'));
+  const values=Object.fromEntries(new FormData($('scene-form')).entries());
+  const animate=$('scene-form').elements.namedItem('animate');if(!animate.disabled)values.animate=animate.checked;
+  values.values=fieldValues($('scene-custom-settings'));
   savingScene=true;try{const result=await call('scene-update',selectedScene.id,{...selectedScene.config,...values},selectedScene.revision);sceneDirty=false;selectedScene=result.scene;applyState(result.state);fillScene();$('preview-file').value=selectedScene.file;$('layout').value=selectedScene.config.layout;refresh();notice('Scene saved · refresh its OBS browser source to see the update');}finally{savingScene=false;}
 }
 $('scene-form').oninput=()=>{sceneDirty=true;$('scene-apply').textContent='Apply changes •';};
