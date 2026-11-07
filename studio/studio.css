@@ -54,3 +54,16 @@
 .recent-project .project-remove{flex-shrink:0;border:0;background:none;padding:8px;color:var(--muted)}
 .recent-project .project-remove:hover{color:var(--red)}
 .streamer-mode #recent-projects{max-height:none;flex:1}.project-actions{justify-content:flex-end}
+
+#settings-panel{display:none;flex:1;min-height:0;overflow:auto;padding:22px}
+main[data-view=settings] #settings-panel{display:block}
+main[data-view=settings] .workarea,main[data-view=settings] .banner-actions{display:none}
+.connection-card{border:1px solid var(--line);border-radius:6px;padding:20px;margin:16px 0;background:#131517}
+.connection-card h2{font-size:18px;margin:0 0 12px}.connection-card p{line-height:1.6;font-size:12px}
+.connection-card label{display:flex;flex-direction:column;gap:8px;font-size:11px}.connection-card input{width:100%}
+.connection-card details{margin:16px 0}.connection-card summary{cursor:pointer;color:var(--muted);font-size:12px}
+.connection-card details button{margin-top:10px}.connection-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+#twitch-status{color:#d4dce5;margin:16px 0}#twitch-code{display:block;font:24px Consolas,monospace;letter-spacing:3px;margin:12px 0}
+#donation-form{margin-top:22px}#saved-connections{display:grid;gap:10px;margin-top:16px}
+.saved-connection{padding:14px;border:1px solid var(--line);border-radius:4px}.saved-connection strong{font-size:13px}.saved-connection p{overflow-wrap:anywhere}
+.saved-connection button{font-size:11px;margin:8px 6px 0 0}

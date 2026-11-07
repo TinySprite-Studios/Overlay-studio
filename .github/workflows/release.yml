@@ -34,6 +34,7 @@ jobs:
       - run: npm run test:streamer:app
       - run: npm run test:custom:app
       - run: npm run test:audio:app
+      - run: npm run test:settings:app
       - run: npm run build:studio
       - name: Create release for the pushed tag
         if: github.event_name == 'push'

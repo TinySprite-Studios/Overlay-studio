@@ -20,7 +20,7 @@ The canvas selector changes preview dimensions; Create vertical copy creates a s
 
 ## Generic events
 
-The optional Twitch helper connects your own channel and supplies follow, subscription, cheer, donation and colour events. Run overlay opens Console for sign-in/setup prompts. Shared scripts/tss-alerts.js displays a neutral alert card and scripts/tss-paint.js changes --accent. Remove these script tags for a fully custom event runtime. Listen to /events with EventSource to build your own widgets. Live colour override requires the helper. Sprite care and character-specific behaviours are not included.
+Connect your Twitch account and donation platforms in Settings, then click Run overlay. See [Streaming connections](connections.md) for setup and platform support. Shared scripts/tss-alerts.js displays a neutral alert card and scripts/tss-paint.js changes --accent. Remove these script tags for a fully custom event runtime. Listen to /events with EventSource to build your own widgets. Live colour override requires the helper. Sprite care and character-specific behaviours are not included.
 
 Credentials remain outside the project. Existing saved projects are never overwritten by an app update; create a new project to get the clean templates. Copy project and Export project preserve your own files. Deleting a scene moves it to the Recycle Bin.
 

@@ -1,6 +1,7 @@
-const {app, BrowserWindow, ipcMain, dialog, clipboard, shell, Menu} = require('electron');
+const {app, BrowserWindow, ipcMain, dialog, clipboard, shell, Menu, safeStorage} = require('electron');
 const {autoUpdater} = require('electron-updater');
 const {recentProjects} = require('./recent-projects.cjs');
+const {createConnections} = require('./connections.cjs');
 const {createUpdates} = require('./updates.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,7 +12,7 @@ const {prepareProject, initializeProject, createProject} = require('./project.cj
 const {spawn} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
 const {resolveFile, list, editable, media} = require('./workspace.cjs');
-let projects, updates, updateTimer, win, root, server, published, previewURL, child, watcher, refreshTimer, closing = false;
+let connections, projects, updates, updateTimer, win, root, server, published, previewURL, child, watcher, refreshTimer, closing = false;
 const testRoot=process.env.TSS_STUDIO_TEST_ROOT;
 if(testRoot)app.setPath('userData',path.join(testRoot,'.studio-data'));
 if(!testRoot&&!app.requestSingleInstanceLock())app.quit();
@@ -59,10 +60,25 @@ async function stop() {
 }
 function run() {
   if (child) return;
-  prepareProject(root, template());
-  const active = spawn(process.execPath, [resolveFile(root, 'scripts/tss-twitch.mjs')], {
-    cwd:root, windowsHide:true, env:{...process.env, ELECTRON_RUN_AS_NODE:'1'}
+  if(connections.state(root).twitch.pending)throw Error('Finish or cancel Twitch sign-in in Settings before running the overlay.');
+  const managed = connections.configured(root);
+  const connectionData = managed ? connections.read(root) : null;
+  if (managed && !connectionData.twitch?.access_token) throw Error('Connect Twitch in Settings before running stream events.');
+  if (!managed) prepareProject(root, template());
+  const projectRoot = root;
+  const script = managed ? path.join(template(), 'scripts/tss-twitch.mjs') : resolveFile(root, 'scripts/tss-twitch.mjs');
+  const active = spawn(process.execPath, [script], {
+    cwd:root, windowsHide:true, stdio:['pipe','pipe','pipe','ipc'],
+    env:{...process.env, ELECTRON_RUN_AS_NODE:'1', ...(managed ? {TSS_STUDIO_MANAGED:'1',TSS_PROJECT_ROOT:root,TSS_RUNTIME_STORE:connections.runtimeFolder(root)} : {})}
   });
+  active.on('message', message => {
+    try {
+      if (message?.type === 'credentials') connections.saveTokens(projectRoot,message.credentials);
+      if (message?.type === 'connection-status') connections.runtimeStatus(projectRoot,message.provider,message.message);
+    } catch {log('Could not save connection information. Stop the runner and reconnect in Settings.\n','error');}
+  });
+  if (managed) active.send(connectionData);
+
   child = active;
   log('Starting Twitch helper…\n');
   send({type:'running', running:true});
@@ -72,6 +88,9 @@ function run() {
   active.on('error', error => log(error.message + '\n', 'error'));
   active.on('close', code => {
     if (child === active) child = null;
+    if(managed)try {
+      for(const provider of ['twitch','streamelements','streamlabs'])connections.runtimeStatus(projectRoot,provider,'Runner stopped.');
+    } catch {log('Saved connection information is unavailable.\n','error');}
     log(`\nRunner exited (${code ?? 'stopped'}).\n`);
     send({type:'running', running:!!child});
   });
@@ -80,6 +99,32 @@ ipcMain.handle('studio', async (event, method, ...args) => {
   if (event.senderFrame !== win.webContents.mainFrame || event.senderFrame.url !== uiURL) throw Error('Untrusted request');
   switch (method) {
     case 'state': return state();
+    case 'connections-state': return connections.state(root);
+    case 'connections-check': {
+      if(child)throw Error('Stop the runner before checking or changing account connections.');
+      return connections.check(root);
+    }
+    case 'twitch-connect': case 'connection-save': case 'connection-disconnect': {
+      if(child)throw Error('Stop the runner before changing account connections.');
+      if(method==='twitch-connect')return connections.connect(root,args[0]);
+      if(method==='connection-save')return connections.saveDonation(root,args[0]);
+      return connections.disconnect(root,args[0]);
+    }
+    case 'twitch-cancel': connections.cancel();return connections.state(root);
+    case 'twitch-browser': await connections.reopen(root);return true;
+    case 'connection-link': {
+      const [provider,kind]=args;
+      const saved=connections.read(root).donations?.[provider];
+      if(!['link','overlay'].includes(kind)||!saved?.[kind])throw Error('Save this link in Settings first.');
+      clipboard.writeText(saved[kind]);return true;
+    }
+    case 'connection-dashboard': {
+      const provider=connections.state(root).providers.find(provider=>provider.id===args[0]);
+      if(!provider?.dashboard)throw Error('Open your provider website to get its connection details.');
+      await shell.openExternal(provider.dashboard);return true;
+    }
+    case 'twitch-developer': await shell.openExternal('https://dev.twitch.tv/console/apps');return true;
+
     case 'update-state': return updates.state();
     case 'update-check': return updates.check();
     case 'update-download': return updates.download();
@@ -133,7 +178,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
       const selected = args[0];
       if (!projects.has(selected)) throw Error('This project is not in the recent list.');
       if (!fs.existsSync(selected) || !fs.statSync(selected).isDirectory()) throw Error('Project folder is missing. Import it from its new location or remove it from the list.');
-      root = selected; projects.remember(root); watch(); return state();
+      connections.cancel(); root = selected; projects.remember(root); watch(); return state();
     }
     case 'import-project': case 'copy': case 'create-project': case 'export': {
       if (child && method!=='export') throw Error('Stop the runner before switching projects.');
@@ -151,7 +196,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
         if(fs.existsSync(path.join(selected,'tss-events.json')))initializeProject(selected);
         else prepareProject(selected, template());
       }
-      root = selected; projects.remember(root); watch(); return state();
+      connections.cancel(); root = selected; projects.remember(root); watch(); return state();
     }
     case 'run': run(); return true;
     case 'stop': await stop(); return true;
@@ -190,6 +235,12 @@ ipcMain.handle('studio', async (event, method, ...args) => {
 });
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+  let localClientId = '';
+  if(!testRoot)try {localClientId=JSON.parse(fs.readFileSync(path.join(process.env.LOCALAPPDATA || app.getPath('home'),'TSS-Overlay','credentials.json'),'utf8')).clientId || '';} catch {}
+  connections = createConnections({directory:path.join(app.getPath('userData'),'connections'),encryption:safeStorage,
+    defaultClientId:process.env.TSS_TWITCH_CLIENT_ID || require('./twitch-app.json').clientId || localClientId,openBrowser:url=>shell.openExternal(url),send,
+    verifyStreamlabs:async token=>(await import(pathToFileURL(path.join(template(),'scripts/tss-streamlabs.mjs')).href)).checkToken(token)});
+
   const enabled = app.isPackaged && !testRoot && !process.env.PORTABLE_EXECUTABLE_FILE && fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'));
   updates = createUpdates({updater:autoUpdater, version:app.getVersion(), enabled,
     disabledReason:'Automatic updates require the installed GitHub release. Portable and development copies are updated manually.', send,
@@ -228,4 +279,4 @@ app.whenReady().then(async () => {
   updateTimer = setInterval(() => updates.check(), 60 * 60 * 1000);
   updateTimer.unref();
 }).catch(error => {dialog.showErrorBox('Studio could not start',error.message);app.quit();});
-app.on('window-all-closed', () => {clearInterval(updateTimer);watcher?.close();server?.close();published?.close();app.quit();});
+app.on('window-all-closed', () => {clearInterval(updateTimer);connections?.cancel();watcher?.close();server?.close();published?.close();app.quit();});

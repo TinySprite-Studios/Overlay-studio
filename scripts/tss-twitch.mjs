@@ -1,3 +1,4 @@
+import {connectStreamlabs} from './tss-streamlabs.mjs';
 import {eventSettings, routeEvent, projectEvents} from './tss-events.mjs';
 import { serveFile } from './public-files.mjs';
 import http from 'node:http';
@@ -9,11 +10,17 @@ import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import { createPaintQueue, PAINT_REWARD, POWER_UP_REWARD, isColourPowerUp } from './tss-paint.mjs';
 
-const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const store = path.join(process.env.LOCALAPPDATA || os.homedir(), 'TSS-Overlay');
+const studio = process.env.TSS_STUDIO_MANAGED ? await new Promise(resolve => process.once('message', resolve)) : null;
+const root = process.env.TSS_PROJECT_ROOT || path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const connectionStatus = (provider, message) => process.send?.({type:'connection-status',provider,message});
+const store = process.env.TSS_RUNTIME_STORE || path.join(process.env.LOCALAPPDATA || os.homedir(), 'TSS-Overlay');
 fs.mkdirSync(store, { recursive: true });
-const read = (name, fallback) => { try { return JSON.parse(fs.readFileSync(path.join(store, name))); } catch { return fallback; } };
+const read = (name, fallback) => {
+  if(studio && name==='credentials.json')return studio.twitch || {};
+  if(studio && name.startsWith('streamelements-'))return {jwt:studio.donations?.streamelements?.mode==='native'?studio.donations.streamelements.token:''};
+  try { return JSON.parse(fs.readFileSync(path.join(store, name))); } catch { return fallback; } };
 const save = (name, value) => {
+  if(studio && name==='credentials.json'){process.send?.({type:'credentials',credentials:value});return;}
   const dest = path.join(store, name);
   fs.writeFileSync(dest + '.tmp', JSON.stringify(value), { mode: 0o600 });
   fs.renameSync(dest + '.tmp', dest);
@@ -68,6 +75,7 @@ const tokenRequest = params => request('https://id.twitch.tv/oauth2/token', {
   method: 'POST', body: new URLSearchParams({ client_id: credentials.clientId, ...params })
 });
 async function authorize() {
+  if(studio)throw Error('Reconnect Twitch in Studio Settings before running the overlay.');
   const device = await request('https://id.twitch.tv/oauth2/device', {
     method: 'POST', body: new URLSearchParams({ client_id: credentials.clientId, scopes })
   });
@@ -182,7 +190,7 @@ async function streamElementsChannel(token) {
 async function connectStreamElements() {
   const settings = read(`streamelements-${identity.user_id}.json`, {});
   if (!settings.jwt) {
-    console.log('StreamElements is not configured. Run setup-overlay.cmd to connect donations and import recent activity.');
+    if(!studio)console.log('StreamElements is not configured. Run setup-overlay.cmd to connect donations and import recent activity.');
     return;
   }
   const channelId = await streamElementsChannel(settings.jwt);
@@ -217,10 +225,11 @@ async function connectStreamElements() {
             topic: 'channel.activities', room: channelId, token: settings.jwt, token_type: 'jwt'
           } }));
         } else if (message.type === 'response') {
-          if (message.error) console.error('StreamElements subscription rejected. Check the JWT token in setup-overlay.cmd.');
+          if (message.error) {connectionStatus('streamelements','Connection rejected. Reconnect StreamElements in Settings.');console.error('StreamElements subscription rejected. Check the connection token.');}
           else {
             attempts = 0;
             console.log('StreamElements connected: listening for donations.');
+            connectionStatus('streamelements','Connected: listening for donations.');
             void history();
           }
         } else if (message.type === 'message' && message.topic === 'channel.activities') {
@@ -236,7 +245,7 @@ async function connectStreamElements() {
         } else if (message.type === 'reconnect') socket.close();
       } catch (_) { console.error('Could not process a StreamElements event.'); }
     };
-    socket.onerror = () => console.error('StreamElements connection interrupted; retrying.');
+    socket.onerror = () => {connectionStatus('streamelements','Connection interrupted. Retrying...');console.error('StreamElements connection interrupted; retrying.');};
     socket.onclose = () => {
       clearTimeout(timeout);
       setTimeout(open, Math.min(30000, 2000 * 2 ** Math.min(attempts++, 4)));
@@ -284,6 +293,7 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
       const { metadata, payload } = message;
       if (metadata.message_type === 'session_welcome') {
         activeSocket = socket;
+        connectionStatus('twitch','Connected as '+identity.login+'; listening for stream events.');
         timeout = ((payload.session.keepalive_timeout_seconds || 30) + 10) * 1000;
         arm();
         if (previous) { previous.close(); return; }
@@ -348,6 +358,7 @@ async function main() {
     probe.once('error', () => reject(new Error('Close the running overlay helper first, then try again (port 8787 is in use).')));
     probe.listen(8787, '127.0.0.1', () => probe.close(resolve));
   });
+  if (studio && !credentials.access_token) throw Error('Connect Twitch in Studio Settings first.');
   if (!credentials.clientId) {
     const prompt = createInterface({ input: process.stdin, output: process.stdout });
     credentials.clientId = (await prompt.question('Paste your Twitch PUBLIC application Client ID: ')).trim();
@@ -423,7 +434,13 @@ async function main() {
     }
   }, 55 * 60 * 1000);
   connect();
-  void connectStreamElements().catch(error => console.error(error.message));
+  void connectStreamElements().catch(error => {connectionStatus('streamelements','Could not connect. Check the saved token.');console.error(error.message);});
+  const streamlabs=studio?.donations?.streamlabs;
+  if(streamlabs?.mode==='native'&&streamlabs.token)connectStreamlabs(streamlabs.token,{
+    status:message=>connectionStatus('streamlabs',message),
+    donation:event=>{activity={...applyDonation(activity,event),_updated:{...activity._updated,donator:Date.now()}};publish();notify(makeAlert('tip',event));}
+  });
+  if(studio)process.on('disconnect',()=>process.exit(0));
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(error => { console.error(error.message); process.exitCode = 1; });

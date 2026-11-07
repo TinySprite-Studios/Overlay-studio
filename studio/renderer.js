@@ -14,7 +14,7 @@ function log(text,kind='info'){
 function action(id,fn){$(id).addEventListener('click',()=>Promise.resolve().then(fn).catch(report));}
 const language=name=>({js:'javascript',mjs:'javascript',cjs:'javascript',html:'html',css:'css',json:'json',svg:'xml',md:'markdown',cmd:'bat'})[name.split('.').pop()]||'plaintext';
 function isDirty(doc){return doc.model.getValue()!==doc.saved;}
-function dirty(){return eventsDirty||sceneDirty||[...documents.values()].some(isDirty);}
+function dirty(){return !!window.connectionSettingsDirty?.()||eventsDirty||sceneDirty||[...documents.values()].some(isDirty);}
 function renderFiles(){
   $('files').replaceChildren();if(!state)return;
   const query=$('filter').value.toLowerCase();const tree={children:new Map()};
@@ -49,7 +49,7 @@ async function openFile(name){
 }
 async function saveFile(name){const doc=documents.get(name);if(!doc)return;const value=doc.model.getValue();await call('save',name,value,doc.saved);doc.saved=value;tabs();}
 async function save(){if(!active)return;await saveFile(active);refresh();notice('Saved '+active);}
-async function saveAll(){for(const [name,doc]of documents)if(isDirty(doc))await saveFile(name);if(sceneDirty)await saveScene();if(eventsDirty)await saveEvents();refresh();notice('All changes saved');}
+async function saveAll(){for(const [name,doc]of documents)if(isDirty(doc))await saveFile(name);if(sceneDirty)await saveScene();if(eventsDirty)await saveEvents();if(window.connectionSettingsDirty?.())await window.saveConnectionSettings();refresh();notice('All changes saved');}
 async function closeTab(name){
   const doc=documents.get(name);if(!doc)return;
   if(isDirty(doc)){const choice=await call('resolve-close',name);if(choice===2)return;if(choice===0)await saveFile(name);}
@@ -58,14 +58,16 @@ async function closeTab(name){
 }
 async function settleScene(){if(!sceneDirty)return true;const choice=await call('resolve-close','scene settings');if(choice===2)return false;if(choice===0)await saveScene();else{sceneDirty=false;fillScene();}return true;}
 window.canCloseStudio=async()=>{
+  if(window.connectionSettingsBusy?.()){notice('Wait for the connection request to finish before closing.');return false;}
   if(!dirty())return true;
   const choice=await call('resolve-close','your project');if(choice===2)return false;if(choice===0)await saveAll();return true;
 };
 function showView(next){
   stopSoundPreview();view=next;document.querySelector('main').dataset.view=next;
-  for(const value of ['workspace','scenes','events','console']){$('view-'+value).classList.toggle('active',value===next);$('view-'+value).setAttribute('aria-selected',String(value===next));}
-  const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],events:['Stream events.','Customise your channel rewards, colours and alert sounds.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
+  for(const value of ['workspace','scenes','events','settings','console']){$('view-'+value).classList.toggle('active',value===next);$('view-'+value).setAttribute('aria-selected',String(value===next));}
+  const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],events:['Stream events.','Customise your channel rewards, colours and alert sounds.'],settings:['Your connections.','Connect your streaming account and donation platforms for this project.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
   $('page-title').textContent=titles[next][0];$('page-description').textContent=titles[next][1];
+  if(next==='settings')window.openConnectionSettings?.();
   if(next==='console'){unread=0;$('console-count').hidden=true;$('console').scrollTop=$('console').scrollHeight;}
   if(next==='scenes'&&!selectedScene&&state?.scenes.length)selectScene(state.scenes[0].id).catch(report);
   requestAnimationFrame(()=>{scale();editor?.layout();});
@@ -90,7 +92,7 @@ function renderProjects() {
   if (!state.projects.length) list.textContent='No recent projects.';
 }
 function applyState(next){
-  state=next;renderProjects();
+  state=next;renderProjects();window.connectionProjectChanged?.(state.root);
   $('server-status').textContent='OBS SERVER · '+state.obsURL.replace('http://','');renderFiles();renderPreviewFiles();renderScenes();if(!eventsDirty)renderEvents();setRunning(state.running);
 }
 function renderPreviewFiles(){const current=$('preview-file').value;$('preview-file').replaceChildren();for(const file of state.files.filter(f=>f.type!=='directory'&&f.name.endsWith('.html'))){const option=new Option(state.scenes.find(s=>s.file===file.name)?.config.name||file.name,file.name);$('preview-file').append(option);}const names=[...$('preview-file').options].map(option=>option.value);$('preview-file').value=names.includes(current)?current:['overlays/overlay-horizontal.html','overlay-horizontal.html',state.scenes[0]?.file,...names].find(name=>names.includes(name))||'';}
@@ -103,7 +105,7 @@ function refresh(){
 }
 function setRunning(value){running=value;$('run').disabled=value;$('stop').disabled=!value;$('run-status').textContent=value?'● Runner active':'● Runner stopped';$('run-status').classList.toggle('running',value);$('console-input').disabled=!value;}
 async function changeProject(method,...args){
-  if(switching)return;if(dirty()){const choice=await call('resolve-close','your project before switching');if(choice===2)return;if(choice===0)await saveAll();}
+  if(switching)return;if(window.connectionSettingsBusy?.())throw Error('Wait for the connection request to finish before switching projects.');if(dirty()){const choice=await call('resolve-close','your project before switching');if(choice===2)return;if(choice===0)await saveAll();}
   stopSoundPreview();switching=true;try{const next=await call(method,...args);if(!next)return;editor.setModel(null);active=null;for(const doc of documents.values())doc.model.dispose();documents.clear();selectedScene=null;sceneDirty=false;eventsDirty=false;expanded.clear();expanded.add('assets');expanded.add('scenes');applyState(next);fillScene();await openFile(next.files.find(f=>f.name==='config.js')?.name||next.files.find(f=>f.editable)?.name);refresh();showView('workspace');notice('Opened '+next.name);}finally{switching=false;}
 }
 function renderScenes(){
@@ -198,7 +200,7 @@ action('import-assets',async()=>{const result=await call('import-assets');if(res
 action('folder',()=>call('folder'));action('refresh',refresh);action('copy-url',copyURL);action('obs-copy',copyURL);
 action('obs-help',()=>{$('obs-url').value=state.obsURL+'/'+$('preview-file').value.split('/').map(encodeURIComponent).join('/');$('obs-dimensions').textContent='Width '+dimensions()[0]+' · Height '+dimensions()[1];$('obs-dialog').showModal();});
 for(const name of ['minimize','maximize','close'])action(name,()=>call(name));
-for(const name of ['workspace','scenes','events','console'])action('view-'+name,()=>showView(name));
+for(const name of ['workspace','scenes','events','settings','console'])action('view-'+name,()=>showView(name));
 action('enlarge',()=>{const enlarged=document.querySelector('.preview-panel').classList.toggle('preview-enlarged');$('enlarge').textContent=enlarged?'⛶ Restore':'⛶ Enlarge';$('enlarge').setAttribute('aria-label',enlarged?'Restore preview':'Enlarge preview');scale();});
 action('clear',()=>{$('console').replaceChildren();unread=0;$('console-count').hidden=true;});
 for(const kind of ['file','folder'])action('new-'+kind,()=>{createKind=kind;$('file-dialog-title').textContent='Create a '+kind;$('filename').value='';$('filename').placeholder=kind==='file'?'scenes/custom.html':'assets/backgrounds';$('file-error').textContent='';$('file-dialog').showModal();});
@@ -230,7 +232,7 @@ action('playground',()=>{$('preview-mode').value='offline';$('preview-file').val
 document.querySelectorAll('[data-alert]').forEach(button=>button.onclick=()=>{$('preview').contentWindow.postMessage({type:'alert',data:{kind:button.dataset.alert,name:'TinySprite',detail:'A little magic for your stream ✦'}},state.previewURL);notice('Preview alert sent');});
 $('console-form').onsubmit=async event=>{event.preventDefault();try{await call('input',$('console-input').value);$('console-input').value='';}catch(error){report(error);}};
 window.addEventListener('keydown',event=>{
-  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();(event.shiftKey?saveAll():view==='scenes'?saveScene():view==='events'?saveEvents():save()).catch(report);}
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();(event.shiftKey?saveAll():view==='scenes'?saveScene():view==='events'?saveEvents():view==='settings'?window.saveConnectionSettings():save()).catch(report);}
   if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='w'&&active){event.preventDefault();closeTab(active).catch(report);}
   if(event.key==='Escape'&&document.querySelector('.preview-enlarged')){$('enlarge').click();}
 });
