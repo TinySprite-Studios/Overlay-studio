@@ -2,7 +2,7 @@ const {spawnSync}=require('node:child_process');
 const path=require('node:path');
 const pkg=require('../package.json');
 const repository=process.env.GITHUB_REPOSITORY || pkg.repository?.url?.match(/^https:\/\/github\.com\/(.+?)(?:\.git)?$/)?.[1];
-const args=[require.resolve('electron-builder/cli.js'),'--win','nsis','portable','--x64','--publish','never'];
+const args=[require.resolve('electron-builder/cli.js'),'--win','nsis','--x64','--publish','never'];
 if(repository){
   if(!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repository))throw Error('GITHUB_REPOSITORY must be owner/repository.');
   const [owner,repo]=repository.split('/');

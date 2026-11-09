@@ -48,12 +48,12 @@ jobs:
             gh release create $env:RELEASE_TAG --verify-tag --title $env:RELEASE_TAG --generate-notes --draft
             if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
           }
-      - name: Upload installer and portable release, then enable updates
+      - name: Upload installer release, then enable updates
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $assets = Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe', '.blockmap' }
+          $assets = Get-Item dist/Overlay-Studio.exe, dist/Overlay-Studio.exe.blockmap -ErrorAction Stop
           foreach ($asset in $assets) {
             gh release upload $env:RELEASE_TAG $asset.FullName --clobber
             if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
