@@ -68,6 +68,7 @@ function showView(next){
   const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],events:['Stream events.','Customise your channel rewards, colours and alert sounds.'],settings:['Your connections.','Connect your streaming account and donation platforms for this project.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
   $('page-title').textContent=titles[next][0];$('page-description').textContent=titles[next][1];
   if(next==='settings')window.openConnectionSettings?.();
+  if(next==='events')window.loadTwitchRewards?.();
   if(next==='console'){unread=0;$('console-count').hidden=true;$('console').scrollTop=$('console').scrollHeight;}
   if(next==='scenes'&&!selectedScene&&state?.scenes.length)selectScene(state.scenes[0].id).catch(report);
   requestAnimationFrame(()=>{scale();editor?.layout();});
@@ -302,7 +303,7 @@ function renderEvents(){
   };
   $('event-count').textContent=settings.events.length+' '+(settings.events.length===1?'event':'events');
   $('events-help').textContent=settings.events.some(event=>['points','bits'].includes(event.trigger))
-    ? 'Keep reward names matched to Twitch. Changing them here does not rename them on Twitch.'
+    ? 'Choose a Twitch reward for each event. Linked rewards keep working when renamed on Twitch.'
     : 'Personalise each event with the options provided by your project.';
   for(const event of settings.events){
     const kind=triggers[event.trigger]||'Custom event';
@@ -313,17 +314,25 @@ function renderEvents(){
     const heading=document.createElement('div'),title=document.createElement('h3'),badge=document.createElement('span');
     title.textContent=event.label||event.name;badge.className='event-kind';badge.textContent=kind;heading.append(title,badge);header.append(icon,heading);
     const body=document.createElement('div');body.className='event-card-body';
-    const label=document.createElement('label');label.className='event-name';label.textContent=['points','bits'].includes(event.trigger)?'Twitch reward name':'Event name';
+    const label=document.createElement('label');label.className='event-name';label.textContent='Event name';
     const input=document.createElement('input');input.value=event.name;input.dataset.eventName=event.id;input.required=true;input.maxLength=80;label.append(input);
     const fields=document.createElement('div');fields.className='form-grid';fields.dataset.eventFields=event.id;renderFields(fields,event.fields,event.values);
     for(const toggle of fields.querySelectorAll('input[type=checkbox]')){toggle.setAttribute('role','switch');toggle.closest('label').classList.add('event-toggle');}
-    body.append(label,fields);card.append(header,body);$('event-settings').append(card);
+    body.append(label);
+    if(['points','bits'].includes(event.trigger)){
+      const rewardLabel=document.createElement('label');rewardLabel.textContent='Twitch reward';rewardLabel.className='event-name';
+      const select=document.createElement('select');select.dataset.rewardEvent=event.id;select.dataset.trigger=event.trigger;
+      select.dataset.broadcaster=event.twitchBroadcasterId||'';
+      select.append(new Option(event.twitchId?'Saved reward':'Match by name (legacy)',event.twitchId||''));
+      select.value=event.twitchId||'';rewardLabel.append(select);body.append(rewardLabel);
+    }
+    body.append(fields);card.append(header,body);$('event-settings').append(card);
   }
   for(const [name,colour]of Object.entries(settings.colours||{})){
     const label=document.createElement('label');label.textContent=name;
     const input=document.createElement('input');input.type='color';input.value=colour;input.name='colour-'+name;label.append(input);$('event-colours').append(label);
   }
-  const paint=settings.events.some(event=>event.id==='paint'||event.id==='paint-pro');
+  const paint=settings.events.some(event=>['paint','paint-pro','paint-pro-24'].includes(event.id));
   document.querySelector('.manual-colour').hidden=!paint;$('palette-heading').hidden=!Object.keys(settings.colours).length;
   renderAlertSounds(settings.sounds || {});
   $('project-sounds').hidden=!Object.keys(settings.sounds || {}).length;
@@ -340,6 +349,7 @@ function renderEvents(){
   $('events-save-status').textContent='Changes apply to this project.';
   $('events-save-status').classList.remove('unsaved');
   $('events-save').textContent='Apply changes';
+  window.renderTwitchRewardPickers?.();
 }
 async function saveEvents(){
   if(!$('events-form').reportValidity())throw Error('Complete the event settings first.');
@@ -347,10 +357,15 @@ async function saveEvents(){
   if(openSettings&&isDirty(openSettings))throw Error('Save or close your code edits to tss-events.json first.');
   const settings=state.events.settings,form=$('events-form').elements;
   const events=settings.events.map(event=>({...event,name:[...$('event-settings').querySelectorAll('[data-event-name]')].find(input=>input.dataset.eventName===event.id).value,values:fieldValues([...$('event-settings').querySelectorAll('[data-event-fields]')].find(group=>group.dataset.eventFields===event.id))}));
+  for(const select of $('event-settings').querySelectorAll('[data-reward-event]')){
+    const event=events.find(event=>event.id===select.dataset.rewardEvent);
+    if(!Object.hasOwn(event,'twitchId')&&!select.value)continue;
+    event.twitchId=select.value;event.twitchBroadcasterId=select.dataset.broadcaster;
+  }
   const colours=Object.fromEntries(Object.keys(settings.colours||{}).map(name=>[name,form.namedItem('colour-'+name).value]));
   const sounds=Object.fromEntries(Object.keys(settings.sounds||{}).filter(kind=>alertSoundLabels[kind]).map(kind=>[kind,{file:$('sound-'+kind).value,volume:Number($('sound-volume-'+kind).value)}]));
   const result=await call('events-update',{events,colours,sounds},eventsRevision);
-  eventsDirty=false;applyState(result);refresh();notice('Event settings saved. Refresh OBS browser sources to apply sound changes. Reward names must match Twitch.');
+  eventsDirty=false;applyState(result);refresh();notice('Event settings saved. Linked Twitch rewards use their IDs. Refresh OBS browser sources to apply sound changes.');
 }
 $('events-form').oninput=()=>{eventsDirty=true;$('events-save').textContent='Apply changes \u2022';$('events-save-status').textContent='Unsaved changes';$('events-save-status').classList.add('unsaved');};
 $('events-form').onsubmit=event=>{event.preventDefault();saveEvents().catch(report);};
@@ -372,7 +387,7 @@ function renderEventTests(settings){
       if($('preview-mode').value==='live')return;
       const data={...event.testData,id:event.id,name:'TinySprite',values:event.values};
       $('preview').contentWindow.postMessage({type:'project-event',data},state.previewURL);
-      if(!['paint','paint-pro','summon','feed','hydrate','tomato'].includes(event.id)){notice('Preview event sent: '+event.name);return;}
+      if(!['paint','paint-pro','paint-pro-24','summon','feed','hydrate','tomato'].includes(event.id)){notice('Preview event sent: '+event.name);return;}
       const paint=event.id.startsWith('paint'),startsAt=Date.now();
       const active={id:crypto.randomUUID(),name:'TinySprite',startsAt,endsAt:startsAt+(paint?10000:15000)};
       if(paint)Object.assign(active,{colour:colour.value,hex:settings.colours[colour.value]||'#ff4545'});

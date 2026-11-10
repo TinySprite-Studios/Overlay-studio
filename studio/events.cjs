@@ -23,7 +23,7 @@ function read(root) {
   return {settings, revision: revision(text)};
 }
 
-function update(root, input, expected) {
+function update(root, input, expected, twitch = {}) {
   const current = read(root);
   if (current.revision !== expected) throw Error('Event settings changed on disk. Reload the Events tab before saving.');
   const names = new Set();
@@ -33,7 +33,18 @@ function update(root, input, expected) {
     const key = event.trigger + ':' + name.toLowerCase().replace(/\s+/g, ' ');
     if (!name || name.length > 80 || names.has(key)) throw Error('Give each event a unique name of 1–80 characters.');
     names.add(key);
-    return {...event, name, values:values(event.fields, change?.values ?? event.values)};
+    const linked = {...event, name, values:values(event.fields, change?.values ?? event.values)};
+    if (change && Object.hasOwn(change, 'twitchId') && ['bits','points'].includes(event.trigger)) {
+      const id = String(change.twitchId || '');
+      if (id !== (event.twitchId || '') || (id && change.twitchBroadcasterId !== event.twitchBroadcasterId)) {
+        if (id && (!twitch.connected || !twitch.rewards?.items.some(reward => reward.id === id && reward.trigger === event.trigger))) {
+          throw Error('Refresh Twitch rewards and choose a reward from the connected channel.');
+        }
+        linked.twitchId = id;
+        linked.twitchBroadcasterId = id ? twitch.userId : '';
+      }
+    }
+    return linked;
   });
   const colours = {...current.settings.colours};
   for (const key of Object.keys(colours)) {

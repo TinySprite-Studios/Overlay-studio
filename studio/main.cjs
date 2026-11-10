@@ -100,6 +100,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
   switch (method) {
     case 'state': return state();
     case 'connections-state': return connections.state(root);
+    case 'twitch-rewards': return connections.refreshRewards(root);
     case 'connections-check': {
       if(child)throw Error('Stop the runner before checking or changing account connections.');
       return connections.check(root);
@@ -205,7 +206,7 @@ ipcMain.handle('studio', async (event, method, ...args) => {
       if(path.extname(file)!=='.html'||!fs.statSync(file).isFile())throw Error('Select an HTML scene first.');
       const url=published.url+'/'+name.split('/').map(encodeURIComponent).join('/');clipboard.writeText(url);return url;
     }
-    case 'events-update': events.update(root,args[0],args[1]); return state();
+    case 'events-update': events.update(root,args[0],args[1],connections.state(root).twitch); return state();
     case 'scene-create': {const scene=scenes.create(root,args[0]);return {scene,state:state()};}
     case 'scene-update': {const scene=scenes.update(root,args[0],args[1],args[2]);return {scene,state:state()};}
     case 'scene-duplicate': {const source=scenes.read(root,args[0]);const scene=scenes.create(root,{...source.config,name:source.config.name+' Copy'},source.id);return {scene,state:state()};}

@@ -1,5 +1,5 @@
 import {connectStreamlabs} from './tss-streamlabs.mjs';
-import {eventSettings, routeEvent, projectEvents} from './tss-events.mjs';
+import {eventSettings, routeEvent, projectEvents, bindPowerUps, withPowerUpBindings} from './tss-events.mjs';
 import { serveFile } from './public-files.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -30,6 +30,13 @@ let paint;
 let credentials = read('credentials.json', {});
 let activity = { follower: '', subscriber: '', cheerer: '', donator: '' };
 let identity;
+let powerUpBindings = {};
+const liveEventSettings = () => withPowerUpBindings(eventSettings(root), powerUpBindings);
+function rememberPowerUps(powerUps) {
+  powerUpBindings = bindPowerUps(eventSettings(root), powerUps, powerUpBindings);
+  const filename = `power-ups-${identity.user_id}.json`;
+  save(filename, {...read(filename, {}), [root]: powerUpBindings});
+}
 const clients = new Set();
 const publish = () => {
   save(`activity-${identity.user_id}.json`, activity);
@@ -313,16 +320,17 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
       } else if (metadata.message_type === 'notification' && !seen.has(metadata.message_id)) {
         seen.add(metadata.message_id);
         if (seen.size > 1000) seen.delete(seen.values().next().value);
-        for (const data of projectEvents(payload.subscription.type, payload.event, eventSettings(root))) {
+        if (payload.event.custom_power_up) rememberPowerUps([payload.event.custom_power_up]);
+        for (const data of projectEvents(payload.subscription.type, payload.event, liveEventSettings())) {
           for (const client of clients) client.write(`event: project-event\ndata: ${JSON.stringify(data)}\n\n`);
         }
         if (['channel.custom_power_up_redemption.add', 'channel.channel_points_custom_reward_redemption.add'].includes(payload.subscription.type)) {
-          payload.event = routeEvent(payload.event, eventSettings(root));
+          payload.event = routeEvent(payload.event, liveEventSettings());
         }
         if (payload.subscription.type === 'channel.custom_power_up_redemption.add') {
           const event = payload.event;
           if (!isColourPowerUp(event) || event.status === 'canceled') return;
-          if (paint.add(event)) console.log('Paint the stream! PRO: one-hour colour change scheduled.');
+          if (paint.add(event)) console.log(`${event.custom_power_up.title}: colour change scheduled.`);
           return;
         }
         if (payload.subscription.type === 'channel.channel_points_custom_reward_redemption.add') {
@@ -377,6 +385,12 @@ async function main() {
   }
   activity = { ...activity, ...read(`activity-${identity.user_id}.json`, {}) };
   if (process.argv.includes('--setup')) { await setup(); return; }
+  powerUpBindings = read(`power-ups-${identity.user_id}.json`, {})[root] || {};
+  try {
+    const result = await api(`bits/custom_power_ups?broadcaster_id=${identity.user_id}`);
+    rememberPowerUps(result.data);
+    console.log('Twitch Power-up IDs synced; linked events survive name changes.');
+  } catch (error) { console.error(`Power-up sync failed: ${error.message}. Saved IDs remain active; unlinked events require matching names.`); }
   paint = createPaintQueue(read(`paint-${identity.user_id}.json`, {}), {
     settings: () => eventSettings(root),
     persist: state => save(`paint-${identity.user_id}.json`, state),
@@ -388,6 +402,7 @@ async function main() {
   setInterval(() => paint.tick(), 250);
   console.log(`Channel points: listening for "${PAINT_REWARD}". Colours last 2 minutes; unknown colours use purple.`);
   console.log(`Bits Power-up: listening for "${POWER_UP_REWARD}". Each colour lasts 1 hour; queued in purchase order.`);
+  console.log('Bits Power-up: PRO+24 lasts 24 hours; queued in purchase order.');
   if (!activity.subscriber || !activity.cheerer) {
     console.log('Previous subs/cheers cannot be retrieved chronologically from Twitch. Run setup-overlay.cmd to enter initial names, or wait for new events.');
   }

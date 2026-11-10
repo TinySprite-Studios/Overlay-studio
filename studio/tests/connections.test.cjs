@@ -9,7 +9,7 @@ function fixture(overrides={}) {
   const encryption={isEncryptionAvailable:()=>true,
     encryptString:text=>{const iv=crypto.randomBytes(16),cipher=crypto.createCipheriv('aes-256-cbc',key,iv);return Buffer.concat([iv,cipher.update(text),cipher.final()]);},
     decryptString:buffer=>{const decipher=crypto.createDecipheriv('aes-256-cbc',key,buffer.subarray(0,16));return Buffer.concat([decipher.update(buffer.subarray(16)),decipher.final()]).toString();}};
-  let account='123',pending=0;
+  let account='123',pending=0,failBits=false;
   const response=(body,status=200)=>({ok:status<400,status,json:async()=>body});
   const fetcher=async(url,options)=>{
     requests.push({url,options});
@@ -19,11 +19,13 @@ function fixture(overrides={}) {
       return response({access_token:'access-secret',refresh_token:'refresh-secret'});
     }
     if(url.endsWith('/validate'))return response({client_id:'testclient123',user_id:account,login:'streamer-'+account,scopes:scopes.split(' ')});
+    if(url.includes('/bits/custom_power_ups?'))return failBits ? response({},503) : response({data:[{id:'power-'+account,title:'Power '+account,bits:600,is_enabled:true}]});
+    if(url.includes('/channel_points/custom_rewards?'))return response({data:[{id:'reward-'+account,title:'Reward '+account,cost:1000,is_enabled:true}]});
     if(url.endsWith('channels/me'))return response({_id:'channel',username:'streamer',provider:'twitch',providerId:account});
     throw Error('Unexpected URL: '+url);
   };
   const service=createConnections({directory:folder,encryption,fetcher,defaultClientId:'testclient123',openBrowser:async url=>opened.push(url),pollDelay:0,verifyStreamlabs:async token=>{assert.equal(token,'socket-secret');},...overrides});
-  return {service,folder,requests,opened,setAccount:value=>account=value,cleanup:()=>{service.cancel();fs.rmSync(folder,{recursive:true,force:true});}};
+  return {service,folder,requests,opened,setAccount:value=>account=value,failBits:()=>failBits=true,cleanup:()=>{service.cancel();fs.rmSync(folder,{recursive:true,force:true});}};
 }
 test('Twitch sign-in saves encrypted credentials per project and never returns secrets',async()=>{
   const f=fixture(),root=path.join(f.folder,'project-a'),other=path.join(f.folder,'project-b');
@@ -44,6 +46,28 @@ test('Twitch sign-in saves encrypted credentials per project and never returns s
     await f.service.connect(root,'testclient123');await waitFor(()=>f.service.state(root).twitch.connected);
     assert.equal(f.service.read(root).donations.streamelements.token,undefined,'old channel tokens removed after changing Twitch account');
     assert.equal(f.service.state(root).donations[0].mode,'link');
+  } finally {f.cleanup();}
+});
+
+test('setup discovers both reward types, refreshes safely and clears them on disconnect',async()=>{
+  const f=fixture();
+  try {
+    await f.service.connect('rewards');
+    await waitFor(()=>f.service.state('rewards').twitch.rewards.items.length===2);
+    const twitch=f.service.state('rewards').twitch;
+    assert.equal(twitch.userId,'123');
+    assert.deepEqual(twitch.rewards.items.map(item=>[item.trigger,item.cost]),[['bits',600],['points',1000]]);
+    assert.equal(twitch.rewards.errors.length,0);
+    f.failBits();await f.service.refreshRewards('rewards');
+    assert.equal(f.service.state('rewards').twitch.rewards.items.length,2,'temporary API failure preserves cached rewards');
+    assert.equal(f.service.state('rewards').twitch.rewards.errors.length,1,'partial failure is visible');
+    assert.equal(f.service.state('other').twitch.rewards.items.length,0);
+    assert.ok(f.requests.filter(request=>request.url.includes('/helix/')).every(request=>request.options.headers.Authorization==='Bearer access-secret'));
+    f.service.disconnect('rewards','twitch');
+    assert.equal(f.service.state('rewards').twitch.rewards.items.length,0);
+    f.setAccount('456');await f.service.connect('rewards');
+    await waitFor(()=>f.service.state('rewards').twitch.rewards.items.some(item=>item.id==='reward-456'));
+    assert.equal(f.service.state('rewards').twitch.rewards.items.some(item=>item.id==='reward-123'),false);
   } finally {f.cleanup();}
 });
 test('cancelled sign-in cannot write credentials after the project is switched',async()=>{

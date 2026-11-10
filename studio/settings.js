@@ -43,6 +43,7 @@
   function render(data) {
     if(data.root!==state?.root)return;
     current=data;
+    window.setTwitchRewards?.(data);
     $('connection-project').textContent=state.name;
     $('twitch-status').textContent=data.twitch.status;
     $('twitch-connect').textContent=data.twitch.connected?'Reconnect Twitch':'Connect Twitch';

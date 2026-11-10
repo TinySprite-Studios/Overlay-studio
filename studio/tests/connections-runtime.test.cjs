@@ -7,7 +7,11 @@ const {pathToFileURL}=require('node:url');
 test('managed runner refreshes credentials through IPC and delivers Twitch and donation events from the selected project',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'tss-managed-runner-'));
   const runtime=path.join(root,'runtime');
-  fs.writeFileSync(path.join(root,'tss-events.json'),JSON.stringify({version:1,events:[{id:'welcome',name:'Welcome',trigger:'channel.follow'}]}));
+  fs.writeFileSync(path.join(root,'tss-events.json'),JSON.stringify({version:1,events:[
+    {id:'welcome',name:'Welcome',trigger:'channel.follow'},
+    {id:'confetti',name:'Old points name',trigger:'points',twitchId:'points-id',twitchBroadcasterId:'123'},
+    {id:'fireworks',name:'Old bits name',trigger:'bits',twitchId:'bits-id',twitchBroadcasterId:'123'}
+  ]}));
   fs.mkdirSync(path.join(root,'scenes'));
   fs.writeFileSync(path.join(root,'scenes/index.html'),'<h1>Selected project</h1>');
   const mock=path.join(root,'network.mjs');
@@ -73,6 +77,14 @@ test('managed runner refreshes credentials through IPC and delivers Twitch and d
     await new Promise((resolve,reject)=>{request=http.get({...options,path:'/events'},response=>{stream=response;response.on('data',data=>{events+=data;resolve();});});request.on('error',reject);});
     child.send({type:'test-event',provider:'twitch',data:JSON.stringify({metadata:{message_type:'notification',message_id:'follow-1'},payload:{subscription:{type:'channel.follow'},event:{user_name:'New follower'}}})});
     await wait(()=>events.includes('event: project-event')&&events.includes('"name":"New follower"'));
+    for(const [type,field,id,action] of [
+      ['channel.channel_points_custom_reward_redemption.add','reward','points-id','confetti'],
+      ['channel.custom_power_up_redemption.add','custom_power_up','bits-id','fireworks']
+    ]) {
+      child.send({type:'test-event',provider:'twitch',data:JSON.stringify({metadata:{message_type:'notification',message_id:id},
+        payload:{subscription:{type},event:{id:'redeem-'+id,broadcaster_user_id:'123',user_name:'Viewer',[field]:{id,title:'Renamed reward'}}}})});
+      await wait(()=>events.includes(`"id":"${action}"`));
+    }
     child.send({type:'test-event',provider:'streamelements',data:JSON.stringify({type:'message',topic:'channel.activities',data:{type:'tip',createdAt:new Date().toISOString(),data:{name:'Elements donor',amount:10,currency:'GBP'}}})});
     await wait(()=>events.includes('"name":"Elements donor"'));
     const donation=JSON.stringify(['event',{type:'donation',message:[{id:'tip-1',name:'Labs donor',amount:'5',currency:'USD'}]}]);

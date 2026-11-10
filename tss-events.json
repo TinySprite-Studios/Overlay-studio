@@ -11,6 +11,12 @@
       "name": "Paint the stream! PRO",
       "canonical": "Paint the stream! PRO",
       "trigger": "bits"
+    },
+    {
+      "id": "paint-pro-24",
+      "name": "PRO+24 | Paint the stream!",
+      "canonical": "PRO+24 | Paint the stream!",
+      "trigger": "bits"
     }
   ],
   "colours": {

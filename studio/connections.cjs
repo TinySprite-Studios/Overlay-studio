@@ -44,7 +44,8 @@ function createConnections({directory, encryption, fetcher = fetch, openBrowser,
   function state(root) {
     const data = read(root), flow = pending?.root === root ? pending.public : null;
     return {root, providers,
-      twitch:{connected:!!data.twitch?.access_token, login:data.twitch?.login || '', pending:flow,
+      twitch:{connected:!!data.twitch?.access_token, login:data.twitch?.login || '', userId:data.twitch?.userId || '', pending:flow,
+        rewards:data.twitchRewards || {items:[], errors:[]},
         status:statuses.get(root)?.twitch || (data.twitch?.access_token ? 'Saved connection. Run overlay to receive events.' : 'Not connected')},
       donations:Object.entries(data.donations || {}).map(([id, value]) => ({id, mode:value.mode, link:value.link,
         hasToken:!!value.token, hasOverlay:!!value.overlay, account:value.account || '',
@@ -68,6 +69,32 @@ function createConnections({directory, encryption, fetcher = fetch, openBrowser,
     const identity = await request('https://id.twitch.tv/oauth2/validate', {headers:{Authorization:'OAuth '+credentials.access_token}});
     if (identity.client_id !== credentials.clientId || !identity.user_id || scopes.split(' ').some(scope => !identity.scopes?.includes(scope))) throw Error('Twitch did not grant the required channel permissions. Reconnect and approve them.');
     return identity;
+  }
+  async function refreshRewards(root) {
+    const credentials = read(root).twitch;
+    if (!credentials?.access_token) throw Error('Connect Twitch in Settings first.');
+    const endpoints = {bits:'bits/custom_power_ups', points:'channel_points/custom_rewards'};
+    const results = await Promise.allSettled(Object.entries(endpoints).map(async ([trigger, endpoint]) => {
+      const result = await request(`https://api.twitch.tv/helix/${endpoint}?broadcaster_id=${encodeURIComponent(credentials.userId)}`, {
+        headers:{Authorization:'Bearer '+credentials.access_token, 'Client-Id':credentials.clientId}
+      });
+      if (!Array.isArray(result.data)) throw Error('Twitch returned an invalid reward list.');
+      return result.data.map(reward => ({id:reward.id, title:reward.title, trigger,
+        cost:trigger === 'bits' ? reward.bits : reward.cost, enabled:reward.is_enabled, paused:reward.is_paused}));
+    }));
+    const data = read(root);
+    if (data.twitch?.access_token !== credentials.access_token || data.twitch?.userId !== credentials.userId) return state(root);
+    const items = [], errors = [];
+    results.forEach((result, index) => {
+      const trigger = Object.keys(endpoints)[index];
+      if (result.status === 'fulfilled') items.push(...result.value);
+      else {
+        items.push(...(data.twitchRewards?.items || []).filter(item => item.trigger === trigger));
+        errors.push(`${trigger === 'bits' ? 'Bits power-ups' : 'Channel points'} could not refresh. Check the Twitch connection and try again.`);
+      }
+    });
+    data.twitchRewards = {items, errors, updatedAt:Date.now()};
+    write(root, data);publish(root);return state(root);
   }
   function cancel() {
     if (!pending) return;
@@ -112,7 +139,9 @@ function createConnections({directory, encryption, fetcher = fetch, openBrowser,
             }
           }
           data.twitch = {...credentials,login:identity.login,userId:identity.user_id};
-          write(flow.root,data);pending=null;statuses.delete(flow.root);runtimeStatus(flow.root,'twitch','Connected as '+identity.login);return;
+          delete data.twitchRewards;
+          write(flow.root,data);pending=null;statuses.delete(flow.root);runtimeStatus(flow.root,'twitch','Connected as '+identity.login);
+          await refreshRewards(flow.root);return;
         } catch (error) {
           if (/authorization_pending/i.test(error.code)) continue;
           if (/slow_down/i.test(error.code)) {delay+=5000;continue;}
@@ -137,6 +166,7 @@ function createConnections({directory, encryption, fetcher = fetch, openBrowser,
       }
       data.twitch={...data.twitch,login:identity.login,userId:identity.user_id};write(root,data);
       runtimeStatus(root,'twitch','Connected as '+identity.login);
+      await refreshRewards(root);
     } catch {runtimeStatus(root,'twitch','Could not verify Twitch. Check your connection or reconnect your account.');}
     return state(root);
   }
@@ -170,12 +200,12 @@ function createConnections({directory, encryption, fetcher = fetch, openBrowser,
   }
   function disconnect(root, provider) {
     const data=read(root);
-    if(provider==='twitch') {cancel();data.previousUserId=data.twitch?.userId || data.previousUserId;delete data.twitch;}
+    if(provider==='twitch') {cancel();data.previousUserId=data.twitch?.userId || data.previousUserId;delete data.twitch;delete data.twitchRewards;}
     else if(providers.some(value=>value.id===provider))delete data.donations[provider];
     else throw Error('Unknown connection.');
     const status=statuses.get(root);if(status)delete status[provider];write(root,data);return state(root);
   }
-  return {state,read,connect,cancel,check,saveDonation,disconnect,runtimeStatus,
+  return {state,read,connect,cancel,check,refreshRewards,saveDonation,disconnect,runtimeStatus,
     configured:root=>fs.existsSync(filename(root)),
     runtimeFolder:root=>path.join(directory,projectKey(root),'runtime'),
     reopen:async root=>{if(pending?.root!==root||!pending.url)throw Error('Start Twitch sign-in first.');await openBrowser(pending.url);},

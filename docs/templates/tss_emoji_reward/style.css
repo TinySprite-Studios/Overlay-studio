@@ -1,0 +1,17 @@
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none;
+}
+
+#emojis { position: fixed; inset: 0; overflow: hidden; }
+.emoji {
+  position: absolute;
+  top: -100px;
+  font: 64px/1 "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+  filter: drop-shadow(0 4px 8px #0006);
+  will-change: transform, opacity;
+}

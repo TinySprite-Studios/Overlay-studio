@@ -4,6 +4,22 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const power = (id, input = '') => ({ id, user_name: 'Viewer', user_input: input,
   custom_power_up: { title: 'Paint the stream! PRO', bits: 100 } });
+
+test('PRO+24 lasts 24 hours, defaults to purple and survives restart in purchase order', async () => {
+  const {createPaintQueue, POWER_UP_24_REWARD, POWER_UP_24_DURATION} = await import('../../scripts/tss-paint.mjs');
+  let time = 0, saved;
+  const options = {now: () => time, persist: value => {saved = structuredClone(value);}};
+  let queue = createPaintQueue({}, options);
+  const event = {...power('day'), custom_power_up: {title: POWER_UP_24_REWARD, bits: 600}};
+  assert.equal(queue.add(event), true);
+  assert.equal(queue.snapshot().active.colour, 'purple');
+  assert.equal(queue.snapshot().active.endsAt, POWER_UP_24_DURATION);
+  queue.add(power('hour', 'blue'));
+  queue = createPaintQueue(saved, options);
+  assert.equal(queue.add(event), false);
+  time = POWER_UP_24_DURATION;
+  assert.equal(queue.tick().active.colour, 'blue');
+});
 test('Bits colours last an hour, queue, survive restart, deduplicate and expire', async () => {
   const { createPaintQueue, POWER_UP_DURATION } = await import('../../scripts/tss-paint.mjs');
   let time = 1000, saved;

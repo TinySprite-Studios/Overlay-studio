@@ -2,8 +2,10 @@ export const PAINT_REWARD = 'Paint the Stream';
 export const PAINT_DURATION = 120000;
 export const POWER_UP_REWARD = 'Paint the stream! PRO';
 export const POWER_UP_DURATION = 3600000;
+export const POWER_UP_24_REWARD = 'PRO+24 | Paint the stream!';
+export const POWER_UP_24_DURATION = 86400000;
 export const isColourPowerUp = event =>
-  event?.custom_power_up?.title?.trim().toLowerCase() === POWER_UP_REWARD.toLowerCase();
+  [POWER_UP_REWARD, POWER_UP_24_REWARD].some(title => event?.custom_power_up?.title?.trim().toLowerCase() === title.toLowerCase());
 const isHex = value => /^#[0-9a-f]{6}$/i.test(value || '');
 export const PAINT_COLOURS = Object.freeze({ red: '#ff4545', orange: '#ff952e', yellow: '#ffe34d',
   green: '#37ff7d', blue: '#479cff', purple: '#b56cff', pink: '#ff71cb', cyan: '#42edff', white: '#ffffff', rgb: '#ff4545' });
@@ -55,7 +57,8 @@ export function createPaintQueue(saved = {}, { now = Date.now, persist = () => {
       const startsAt = Math.max(now(), queue.at(-1)?.endsAt || 0);
       queue.push({ id: event.id, name: String(event.user_name || 'Viewer').slice(0, 150), colour,
         hex: palette()[colour] || PAINT_COLOURS[colour] || colour, startsAt,
-        endsAt: startsAt + (powerUp ? POWER_UP_DURATION : PAINT_DURATION) });
+        endsAt: startsAt + (powerUp ? (event.custom_power_up.title.trim().toLowerCase() === POWER_UP_24_REWARD.toLowerCase()
+          ? POWER_UP_24_DURATION : POWER_UP_DURATION) : PAINT_DURATION) });
       seen.add(event.id);
       if (seen.size > 5000) seen.delete(seen.values().next().value);
       save();
