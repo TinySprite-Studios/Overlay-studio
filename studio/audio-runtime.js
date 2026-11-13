@@ -11,7 +11,7 @@
   // Reported to the Studio Console (OBS browser sources have no F12 console).
   const report = text => {
     if (studioPreview) return;
-    const page = location.pathname.split('/').slice(-2, -1)[0] || location.pathname;
+    const path = location.pathname || '', page = path.split('/').slice(-2, -1)[0] || path;
     try { fetch('/__studio-log?m=' + encodeURIComponent(page + ': ' + text), {cache:'no-store'}).catch(() => {}); } catch {}
   };
 
