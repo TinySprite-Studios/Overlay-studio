@@ -80,7 +80,7 @@ async function serve(getRoot, port=0, offline=false) {
       const headers={'Content-Type':mime[ext]||'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Accept-Ranges':'bytes'};
       if(ext==='.html'){
         if(stat.size>10e6){res.writeHead(413).end();return;}
-        const scripts=(offline?'<script src="/__studio-preview.js"></script>':'')+'<script src="/__studio-project.js?scene='+encodeURIComponent(name)+'"></script><script defer src="/__studio-audio.js?scene='+encodeURIComponent(name)+'"></script>';
+        const scripts=(offline?'<script src="/__studio-preview.js"></script>':'')+'<script src="/__studio-project.js?scene='+encodeURIComponent(name)+'"></script><script src="/__studio-audio.js?scene='+encodeURIComponent(name)+'"></script>';
         const body=fs.readFileSync(file,'utf8').replace(/<head[^>]*>/i,match=>match+scripts);
         res.writeHead(200,headers).end(req.method==='HEAD'?undefined:body);return;
       }

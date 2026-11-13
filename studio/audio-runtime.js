@@ -23,7 +23,7 @@
     player.src = '/' + sound.file.split('/').map(encodeURIComponent).join('/');
     player.volume = sound.volume / 100;
     player.dataset.studioAudio = 'true';
-    document.body.append(player);
+    (document.body || document.documentElement).append(player);
     players.add(player);
     const started = generation;
     let finished = false;
