@@ -260,7 +260,7 @@ app.whenReady().then(async () => {
   initializeProject(root);
   if (!projects.initialized) projects.remember(root);
   server=await serve(()=>root,0,true);previewURL=server.url;
-  try{published=await serve(()=>root,testRoot?0:8791,false);}catch(error){throw Error('The OBS scene server could not start on port 8791. Close the other Studio instance and try again. '+error.message);}
+  try{published=await serve(()=>root,testRoot?0:8791,false,log);}catch(error){throw Error('The OBS scene server could not start on port 8791. Close the other Studio instance and try again. '+error.message);}
   win = new BrowserWindow({show:!testRoot,width:1500,height:960,minWidth:1050,minHeight:700,frame:false,icon:path.join(__dirname,'../assets/branding/overlay-studio.ico'),backgroundColor:'#101113',title:'TinySprite Overlay Studio',webPreferences:{autoplayPolicy:'no-user-gesture-required',backgroundThrottling:!testRoot,preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   win.webContents.setWindowOpenHandler(() => ({action:'deny'}));
   win.webContents.on('will-navigate', event => event.preventDefault());

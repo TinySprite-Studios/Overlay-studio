@@ -25,11 +25,17 @@ const bridge = `(() => {
 })();`;
 
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.mp4':'video/mp4','.webm':'video/webm','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.ico':'image/x-icon'};
-async function serve(getRoot, port=0, offline=false) {
+async function serve(getRoot, port=0, offline=false, onLog=null) {
   const sockets=new Set();
   const server=http.createServer((req,res)=>{
     if(req.headers.host!==`127.0.0.1:${server.address().port}` || !['GET','HEAD'].includes(req.method)){res.writeHead(403).end();return;}
     if(req.url === '/') {res.writeHead(302,{Location:'/overlays/overlay-horizontal.html'}).end();return;}
+    if(req.url.startsWith('/__studio-log?')){
+      // Lets scene pages report to the Studio Console; OBS gives no F12 console.
+      const text=new URL(req.url,'http://localhost').searchParams.get('m');
+      if(onLog&&text)onLog('[OBS scene] '+text.replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,300));
+      res.writeHead(204,{'Cache-Control':'no-store'}).end();return;
+    }
     let name;
     try{name=decodeURIComponent(new URL(req.url,'http://localhost').pathname).slice(1)||'overlays/overlay-horizontal.html';}catch{res.writeHead(400).end();return;}
     if(name==='__studio-preview.js'&&offline){res.writeHead(200,{'Content-Type':'text/javascript'}).end(bridge);return;}

@@ -8,6 +8,13 @@
   const queue = [];
   let alertPlaying = false, active = false, visible = true, playingScene = false, generation = 0, musicTimer;
 
+  // Reported to the Studio Console (OBS browser sources have no F12 console).
+  const report = text => {
+    if (studioPreview) return;
+    const page = location.pathname.split('/').slice(-2, -1)[0] || location.pathname;
+    try { fetch('/__studio-log?m=' + encodeURIComponent(page + ': ' + text), {cache:'no-store'}).catch(() => {}); } catch {}
+  };
+
   function stop() {
     clearTimeout(musicTimer);
     generation++;
@@ -36,7 +43,8 @@
       if (started === generation) done();
     };
     player.onended = player.onerror = finish;
-    player.play().catch(error => { console.warn('Scene audio could not play:', error.message); finish(); });
+    player.onerror = () => { report('audio file failed to load: ' + sound.file); finish(); };
+    player.play().then(() => report('audio is playing'), error => { console.warn('Scene audio could not play:', error.message); report('audio could not play: ' + error.message); finish(); });
   }
 
   function nextAlert() {
@@ -64,17 +72,23 @@
       playingScene = next;
       stop();
       if (next) {
-        if (scene.delay > 0) musicTimer = setTimeout(() => { if (playingScene) play(scene); }, scene.delay * 1000);
-        else play(scene);
-      }
+        if (!scene.file) { report('scene is active, but no scene-start audio is selected'); return; }
+        if (scene.delay > 0) {
+          report('waiting ' + scene.delay + 's before starting audio (' + scene.file + ')');
+          musicTimer = setTimeout(() => { if (playingScene) { report('audio starting'); play(scene); } }, scene.delay * 1000);
+        } else { report('audio starting'); play(scene); }
+      } else report('scene no longer active, audio stopped');
     };
+    report('page loaded, waiting for OBS to report the scene as active');
     // OBS keeps inactive browser sources loaded. Only an explicit activation
     // may start audio; page load and Studio Mode preview are not activation.
     addEventListener('obsSourceActiveChanged', event => {
+      report('OBS active event: ' + JSON.stringify(event.detail));
       if (typeof event.detail?.active !== 'boolean') return;
       active = event.detail.active; update();
     });
     addEventListener('obsSourceVisibleChanged', event => {
+      report('OBS visible event: ' + JSON.stringify(event.detail));
       if (typeof event.detail?.visible !== 'boolean') return;
       visible = event.detail.visible; update();
     });
