@@ -152,3 +152,5 @@ main[data-view=events] #events-panel{display:flex;flex-direction:column;overflow
 #events-panel>.manual-colour{flex-shrink:0}
 @media(max-width:1200px){.events-content{padding:18px}.events-actions{padding:14px 18px}#event-settings{gap:14px}}
 @media(prefers-reduced-motion:reduce){#events-form .event-toggle input[type=checkbox],#events-form .event-toggle input[type=checkbox]::after{transition:none}}
+
+#twitch-reward-list{display:grid;gap:6px;margin:12px 0 16px}.reward-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 12px;border:1px solid #343941;border-radius:7px;background:#15181c;font-size:12px}.reward-row select{min-width:200px}

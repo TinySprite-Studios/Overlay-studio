@@ -22,7 +22,21 @@ function initializeProject(root) {
   fs.mkdirSync(root, {recursive:true});
   for (const folder of ['scenes', 'assets']) fs.mkdirSync(resolveFile(root, folder), {recursive:true});
   const file = resolveFile(root, 'tss-events.json');
-  if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify({version:1, events:[], colours:{}, sounds:{}}, null, 2) + '\n');
+  if (!fs.existsSync(file)) return fs.writeFileSync(file, JSON.stringify({version:1, events:[], colours:{}, sounds:{}}, null, 2) + '\n');
+  addPaint24(file);
+}
+
+// Projects created before the 24-hour colour Power-up need its event so it can be linked.
+function addPaint24(file) {
+  try {
+    const settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const events = settings.events;
+    const index = Array.isArray(events) ? events.findIndex(event => event?.id === 'paint-pro') : -1;
+    if (index < 0 || events.some(event => event?.id === 'paint-pro-24')) return;
+    const name = 'PRO+24 | Paint the stream!';
+    events.splice(index + 1, 0, {id:'paint-pro-24', name, canonical:name, trigger:'bits', values:{}});
+    fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
+  } catch {}
 }
 
 function createProject(root) {

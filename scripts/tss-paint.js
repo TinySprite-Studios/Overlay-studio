@@ -15,7 +15,7 @@
     const base = window.TSS_SCENE?.accent || window.TSS_THEME?.accent;
     if (/^#[0-9a-f]{6}$/i.test(base)) setColour(base);
     const original = Object.fromEntries(keys.map(key => [key, style.getPropertyValue(key)]));
-    let expiry, cycle, lastId;
+    let expiry, cycle; const announced = new Set();
     const restore = () => {
       clearTimeout(expiry); clearTimeout(cycle);
       for (const key of keys) {
@@ -37,8 +37,9 @@
         tick();
       }
       expiry = setTimeout(restore, Math.min(2147483647, active.endsAt - Date.now()));
-      if (lastId !== active.id) {
-        lastId = active.id;
+      const alertId = active.alertId || active.id;
+      if (!announced.has(alertId)) {
+        announced.add(alertId);
         window.TSSAlerts?.enqueue({kind:'paint', name:active.name, detail:`Changed the stream to ${active.colour}`});
       }
     };

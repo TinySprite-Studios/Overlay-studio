@@ -54,11 +54,30 @@ export function createPaintQueue(saved = {}, { now = Date.now, persist = () => {
       const input = String(event.user_input || '').trim().toLowerCase();
       const choice = input === 'rainbow' ? 'rgb' : input;
       const colour = Object.hasOwn(PAINT_COLOURS, choice) ? choice : 'purple';
-      const startsAt = Math.max(now(), queue.at(-1)?.endsAt || 0);
-      queue.push({ id: event.id, name: String(event.user_name || 'Viewer').slice(0, 150), colour,
-        hex: palette()[colour] || PAINT_COLOURS[colour] || colour, startsAt,
-        endsAt: startsAt + (powerUp ? (event.custom_power_up.title.trim().toLowerCase() === POWER_UP_24_REWARD.toLowerCase()
-          ? POWER_UP_24_DURATION : POWER_UP_DURATION) : PAINT_DURATION) });
+      const item = { id: event.id, name: String(event.user_name || 'Viewer').slice(0, 150), colour,
+        hex: palette()[colour] || PAINT_COLOURS[colour] || colour };
+      if (powerUp) {
+        item.startsAt = Math.max(now(), queue.at(-1)?.endsAt || 0);
+        item.endsAt = item.startsAt + (event.custom_power_up.title.trim().toLowerCase() === POWER_UP_24_REWARD.toLowerCase()
+          ? POWER_UP_24_DURATION : POWER_UP_DURATION);
+        queue.push(item);
+      } else {
+        // Channel-point colours interrupt Bits Power-ups; the interrupted colour resumes afterwards.
+        item.override = true;
+        item.startsAt = Math.max(now(), ...queue.filter(entry => entry.override).map(entry => entry.endsAt));
+        item.endsAt = item.startsAt + PAINT_DURATION;
+        const shifted = [];
+        for (const entry of queue) {
+          if (entry.endsAt <= item.startsAt) shifted.push(entry);
+          else if (entry.startsAt >= item.startsAt) shifted.push({ ...entry, startsAt: entry.startsAt + PAINT_DURATION, endsAt: entry.endsAt + PAINT_DURATION });
+          else {
+            shifted.push({ ...entry, endsAt: item.startsAt });
+            shifted.push({ ...entry, id: `${entry.id}~${globalThis.crypto.randomUUID()}`, alertId: entry.alertId || entry.id,
+              startsAt: item.endsAt, endsAt: entry.endsAt + PAINT_DURATION });
+          }
+        }
+        queue = [...shifted, item].sort((a, b) => a.startsAt - b.startsAt);
+      }
       seen.add(event.id);
       if (seen.size > 5000) seen.delete(seen.values().next().value);
       save();
