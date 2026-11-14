@@ -62,13 +62,33 @@ window.canCloseStudio=async()=>{
   if(!dirty())return true;
   const choice=await call('resolve-close','your project');if(choice===2)return false;if(choice===0)await saveAll();return true;
 };
+let activityTimer,activityKind='',activitySignature='';
+const activityIcons={follow:'♥',sub:'★',gift:'🎁',cheer:'◆',raid:'⚑',powerup:'⚡',reward:'✦',donation:'$'};
+function ago(time){const s=Math.max(0,Math.round((Date.now()-time)/1000));if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+' min ago';if(s<86400)return Math.floor(s/3600)+' h ago';return Math.floor(s/86400)+' d ago';}
+async function loadActivity(){
+  const rows=(await call('feed')).filter(row=>!activityKind||row.kind===activityKind);
+  const signature=activityKind+JSON.stringify(rows.map(row=>row.id))+Math.floor(Date.now()/60000);
+  if(signature===activitySignature)return;activitySignature=signature;
+  const list=$('activity-list');
+  if(!rows.length){const empty=document.createElement('div');empty.className='activity-empty';empty.textContent='Nothing yet. Run the overlay and new follows, subs, bits, raids and donations will appear here.';list.replaceChildren(empty);return;}
+  list.replaceChildren(...rows.map(row=>{
+    const item=document.createElement('div');item.className='activity-row';item.dataset.kind=row.kind;
+    const icon=document.createElement('div');icon.className='activity-icon-pill';icon.textContent=activityIcons[row.kind]||'•';
+    const main=document.createElement('div');main.className='activity-main';
+    const name=document.createElement('strong');name.textContent=row.name;const detail=document.createElement('span');detail.textContent=row.detail;
+    main.append(name,detail);const time=document.createElement('div');time.className='activity-time';time.textContent=ago(row.time);
+    item.append(icon,main,time);return item;
+  }));
+}
+$('activity-filters').addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;activityKind=button.dataset.kind;for(const other of $('activity-filters').children)other.classList.toggle('active',other===button);activitySignature='';loadActivity().catch(report);});
 function showView(next){
   stopSoundPreview();view=next;document.querySelector('main').dataset.view=next;
-  for(const value of ['workspace','scenes','events','settings','console']){$('view-'+value).classList.toggle('active',value===next);$('view-'+value).setAttribute('aria-selected',String(value===next));}
-  const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],events:['Stream events.','Customise your channel rewards, colours and alert sounds.'],settings:['Your connections.','Connect your streaming account and donation platforms for this project.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
+  for(const value of ['workspace','scenes','events','activity','settings','console']){$('view-'+value).classList.toggle('active',value===next);$('view-'+value).setAttribute('aria-selected',String(value===next));}
+  const titles={workspace:['Make it yours.',developerMode?'Edit your overlay, preview every detail, then go live.':'Preview your overlays, test alerts, then go live.'],scenes:['Set the scene.','Build a complete stream, from the first hello to the final goodbye.'],events:['Stream events.','Customise your channel rewards, colours and alert sounds.'],activity:['Activity feed.','Follows, subs, gifts, bits, raids and donations as they happen.'],settings:['Your connections.','Connect your streaming account and donation platforms for this project.'],console:['Behind the stream.','Live output and setup prompts from your Twitch runner.']};
   $('page-title').textContent=titles[next][0];$('page-description').textContent=titles[next][1];
   if(next==='settings')window.openConnectionSettings?.();
   if(next==='events')window.loadTwitchRewards?.();
+  clearInterval(activityTimer);if(next==='activity'){loadActivity();activityTimer=setInterval(loadActivity,3000);}
   if(next==='console'){unread=0;$('console-count').hidden=true;$('console').scrollTop=$('console').scrollHeight;}
   if(next==='scenes'&&!selectedScene&&state?.scenes.length)selectScene(state.scenes[0].id).catch(report);
   requestAnimationFrame(()=>{scale();editor?.layout();});
@@ -205,7 +225,7 @@ action('import-assets',async()=>{const result=await call('import-assets');if(res
 action('folder',()=>call('folder'));action('refresh',refresh);action('copy-url',copyURL);action('obs-copy',copyURL);
 action('obs-help',()=>{$('obs-url').value=state.obsURL+'/'+$('preview-file').value.split('/').map(encodeURIComponent).join('/');$('obs-dimensions').textContent='Width '+dimensions()[0]+' · Height '+dimensions()[1];$('obs-dialog').showModal();});
 for(const name of ['minimize','maximize','close'])action(name,()=>call(name));
-for(const name of ['workspace','scenes','events','settings','console'])action('view-'+name,()=>showView(name));
+for(const name of ['workspace','scenes','events','activity','settings','console'])action('view-'+name,()=>showView(name));
 action('enlarge',()=>{const enlarged=document.querySelector('.preview-panel').classList.toggle('preview-enlarged');$('enlarge').textContent=enlarged?'⛶ Restore':'⛶ Enlarge';$('enlarge').setAttribute('aria-label',enlarged?'Restore preview':'Enlarge preview');scale();});
 action('clear',()=>{$('console').replaceChildren();unread=0;$('console-count').hidden=true;});
 for(const kind of ['file','folder'])action('new-'+kind,()=>{createKind=kind;$('file-dialog-title').textContent='Create a '+kind;$('filename').value='';$('filename').placeholder=kind==='file'?'scenes/custom.html':'assets/backgrounds';$('file-error').textContent='';$('file-dialog').showModal();});

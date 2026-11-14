@@ -1,6 +1,6 @@
 {
   "name": "tss-overlay",
-  "version": "1.10.4",
+  "version": "1.10.5",
   "private": true,
   "engines": {
     "node": ">=22"
@@ -11,7 +11,7 @@
     "preview": "node scripts/offline-preview.mjs",
     "studio": "electron .",
     "build:studio": "node studio/build.cjs",
-    "test:studio": "node --test studio/tests/workspace.test.cjs studio/tests/scenes.test.cjs studio/tests/public-files.test.cjs studio/tests/events.test.cjs studio/tests/audio.test.cjs studio/tests/project.test.cjs studio/tests/custom-project.test.cjs studio/tests/connections.test.cjs studio/tests/connections-runtime.test.cjs",
+    "test:studio": "node --test studio/tests/workspace.test.cjs studio/tests/scenes.test.cjs studio/tests/public-files.test.cjs studio/tests/events.test.cjs studio/tests/audio.test.cjs studio/tests/project.test.cjs studio/tests/custom-project.test.cjs studio/tests/connections.test.cjs studio/tests/connections-runtime.test.cjs studio/tests/feed.test.cjs",
     "test:settings:app": "node studio/tests/settings-smoke.cjs",
     "test:scenes:app": "node studio/tests/scene-settings-smoke.cjs",
     "test:custom:app": "node studio/tests/custom-project-smoke.cjs",

@@ -154,3 +154,19 @@ main[data-view=events] #events-panel{display:flex;flex-direction:column;overflow
 @media(prefers-reduced-motion:reduce){#events-form .event-toggle input[type=checkbox],#events-form .event-toggle input[type=checkbox]::after{transition:none}}
 
 #twitch-reward-list{display:grid;gap:6px;margin:12px 0 16px}.reward-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 12px;border:1px solid #343941;border-radius:7px;background:#15181c;font-size:12px}.reward-row select{min-width:200px}
+
+#activity-panel{display:none;flex:1;min-height:0;flex-direction:column;overflow:hidden;border-radius:10px;background:linear-gradient(135deg,#171a1e,#111315 75%)}
+main[data-view=activity] #activity-panel{display:flex}
+main[data-view=activity] .workarea,main[data-view=activity] .banner-actions{display:none}
+.activity-bar{padding:14px 18px;border-bottom:1px solid var(--line)}
+.activity-filters{display:flex;gap:6px;flex-wrap:wrap}
+.activity-filters button{padding:6px 12px;border-radius:999px;font-size:11px}
+.activity-filters button.active{background:var(--red);border-color:var(--red);color:#fff}
+#activity-list{flex:1;overflow:auto;padding:8px 18px}
+.activity-row{display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid #22252a}
+.activity-icon-pill{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:15px;background:#23262b;flex:none}
+.activity-row[data-kind=follow] .activity-icon-pill{color:#ff6fa5}.activity-row[data-kind=sub] .activity-icon-pill,.activity-row[data-kind=gift] .activity-icon-pill{color:#b98cff}.activity-row[data-kind=cheer] .activity-icon-pill{color:#4fc3f7}.activity-row[data-kind=raid] .activity-icon-pill{color:#ffb74d}.activity-row[data-kind=donation] .activity-icon-pill{color:#5ee08a}
+.activity-main{flex:1;min-width:0}.activity-main strong{display:block;font-size:13px}.activity-main span{color:var(--muted)}
+.activity-time{color:var(--muted);font-size:11px;white-space:nowrap}
+.activity-empty{padding:40px 0;text-align:center;color:var(--muted)}
+.activity-row[data-kind=powerup] .activity-icon-pill{color:#4fc3f7}.activity-row[data-kind=reward] .activity-icon-pill{color:#e34855}

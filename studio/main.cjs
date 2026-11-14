@@ -5,6 +5,7 @@ const {createConnections} = require('./connections.cjs');
 const {createUpdates} = require('./updates.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const {serve} = require('./server.cjs');
 const scenes = require('./scenes.cjs');
 const events = require('./events.cjs');
@@ -197,6 +198,14 @@ ipcMain.handle('studio', async (event, method, ...args) => {
         else prepareProject(selected, template());
       }
       connections.cancel(); root = selected; projects.remember(root); watch(); return state();
+    }
+    case 'feed': {
+      const folder = connections.configured(root) ? connections.runtimeFolder(root) : path.join(process.env.LOCALAPPDATA || os.homedir(), 'TSS-Overlay');
+      try {
+        const files = fs.readdirSync(folder).filter(name => /^feed-\d+\.json$/.test(name)).map(name => ({name, time:fs.statSync(path.join(folder, name)).mtimeMs})).sort((a, b) => b.time - a.time);
+        const rows = files.length ? JSON.parse(fs.readFileSync(path.join(folder, files[0].name), 'utf8')) : [];
+        return Array.isArray(rows) ? rows.slice(0, 200).map(row => ({id:String(row.id), time:Number(row.time) || 0, kind:String(row.kind), name:String(row.name), detail:String(row.detail || '')})) : [];
+      } catch { return []; }
     }
     case 'run': run(); return true;
     case 'stop': await stop(); return true;

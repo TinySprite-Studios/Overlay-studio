@@ -5,7 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import { createPaintQueue, PAINT_REWARD, POWER_UP_REWARD, isColourPowerUp } from './tss-paint.mjs';
@@ -42,6 +42,29 @@ const publish = () => {
   save(`activity-${identity.user_id}.json`, activity);
   for (const client of clients) client.write(`data: ${JSON.stringify(activity)}\n\n`);
 };
+// Newest-first list of everything that happened, shown in Studio's Activity tab.
+let feed = [];
+const feedName = event => event.is_anonymous ? 'Anonymous' : event.user_name || event.from_broadcaster_user_name || '';
+export function feedEntry(type, event, time = Date.now(), id = '') {
+  const name = feedName(event);
+  if (type === 'channel.follow') return name && {kind:'follow', name, detail:''};
+  if (type === 'channel.subscribe') return name && {kind:'sub', name, detail:event.is_gift ? 'Received a gifted sub' : 'Subscribed'};
+  if (type === 'channel.subscription.message') return name && {kind:'sub', name, detail:`Resubscribed, ${event.cumulative_months || 1} months`};
+  if (type === 'channel.subscription.gift') return name && {kind:'gift', name, detail:`Gifted ${event.total || 1} sub${event.total > 1 ? 's' : ''}`};
+  if (type === 'channel.cheer') return name && {kind:'cheer', name, detail:`${event.bits || 0} Bits`};
+  if (type === 'channel.raid') return name && {kind:'raid', name, detail:`Raided with ${event.viewers || 0} viewers`};
+  if (type === 'channel.custom_power_up_redemption.add' && event.status !== 'canceled') return name && {kind:'powerup', name, detail:event.custom_power_up?.title || 'Bits Power-up'};
+  if (type === 'channel.channel_points_custom_reward_redemption.add' && event.status !== 'canceled') return name && {kind:'reward', name, detail:event.reward?.title || 'Channel point reward'};
+  if (type === 'tip') { const alert = makeAlert('tip', event); return alert && {kind:'donation', name:alert.name, detail:alert.detail}; }
+  return null;
+}
+function addFeed(type, event, time = Date.now(), id = '') {
+  const entry = feedEntry(type, event);
+  if (!entry) return;
+  if (id && feed.some(item => item.id === id)) return;
+  feed = [{id: id || `${time}-${Math.random().toString(36).slice(2, 8)}`, time, ...entry}, ...feed].slice(0, 200);
+  try { save(`feed-${identity.user_id}.json`, feed); } catch {}
+}
 const notify = alert => {
   if (!alert) return;
   for (const client of clients) client.write(`event: alert\ndata: ${JSON.stringify(alert)}\n\n`);
@@ -137,6 +160,10 @@ export function applyEvent(state, type, event) {
   if (type === 'channel.cheer') {
     const name = event.is_anonymous ? 'Anonymous' : event.user_name;
     return name ? { ...state, cheerer: name } : state;
+  }
+  // Bits spent on Power-ups count the same as cheers: both show as the recent bits name.
+  if (type === 'channel.custom_power_up_redemption.add') {
+    return event.status !== 'canceled' && typeof event.user_name === 'string' && event.user_name.trim() ? { ...state, cheerer: event.user_name } : state;
   }
   if (typeof event.user_name !== 'string' || !event.user_name.trim()) return state;
   if (type === 'channel.follow') return { ...state, follower: event.user_name };
@@ -247,6 +274,7 @@ async function connectStreamElements() {
           if (next !== activity) {
             activity = { ...next, _updated: { ...next._updated, donator: Number.isFinite(time) ? time : Date.now() } };
             publish();
+            addFeed('tip', event, Number.isFinite(time) ? time : Date.now(), event?._id || '');
             notify(makeAlert('tip', event));
           }
         } else if (message.type === 'reconnect') socket.close();
@@ -285,6 +313,31 @@ async function setup() {
   publish();
   console.log('Setup saved locally. Start start-twitch.cmd to run the overlay.');
 }
+// Optional project extension: <project>/tss-project.mjs. It keeps project-only features
+// (such as sprite care) in the project, not in Studio. See docs/project-hook.md.
+let hook = null;
+const sseName = name => String(name).replace(/[^\w-]/g, '');
+async function loadHook() {
+  const file = path.join(root, 'tss-project.mjs');
+  if (!fs.existsSync(file)) return;
+  try {
+    const module = await import(pathToFileURL(file).href + '?t=' + fs.statSync(file).mtimeMs);
+    const setup = module.default || module.setup;
+    if (typeof setup !== 'function') throw new Error('it must export a default function');
+    hook = await setup({
+      root, userId: identity.user_id, login: identity.login,
+      read: name => read(`project-${name}-${identity.user_id}.json`, {}),
+      save: (name, value) => save(`project-${name}-${identity.user_id}.json`, value),
+      emit: (name, data) => { for (const client of clients) client.write(`event: ${sseName(name)}\ndata: ${JSON.stringify(data)}\n\n`); },
+      twitch: endpoint => api(endpoint),
+      log: (...parts) => console.log('[project]', ...parts)
+    }) || null;
+    console.log('Project extension loaded: tss-project.mjs');
+  } catch (error) { hook = null; console.error('Project extension tss-project.mjs failed to load: ' + error.message); }
+}
+async function callHook(name, ...args) {
+  try { return await hook?.[name]?.(...args); } catch (error) { console.error(`Project extension ${name}: ${error.message}`); }
+}
 let activeSocket;
 function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
   const endpoint = new URL(url);
@@ -304,10 +357,11 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
         timeout = ((payload.session.keepalive_timeout_seconds || 30) + 10) * 1000;
         arm();
         if (previous) { previous.close(); return; }
-        for (const [type, version] of [['channel.follow','2'], ['channel.subscribe','1'], ['channel.subscription.message','1'], ['channel.cheer','1'], ['channel.channel_points_custom_reward_redemption.add','1'], ['channel.custom_power_up_redemption.add','1']]) {
+        for (const [type, version] of [['channel.follow','2'], ['channel.subscribe','1'], ['channel.subscription.message','1'], ['channel.cheer','1'], ['channel.subscription.gift','1'], ['channel.raid','1'], ...(hook?.subscriptions || []), ['channel.channel_points_custom_reward_redemption.add','1'], ['channel.custom_power_up_redemption.add','1']]) {
           try {
             await api('eventsub/subscriptions', { method: 'POST', body: JSON.stringify({
-              type, version, condition: { broadcaster_user_id: identity.user_id,
+              type, version, condition: {
+                ...(type === 'channel.raid' ? { to_broadcaster_user_id: identity.user_id } : { broadcaster_user_id: identity.user_id }),
                 ...(type === 'channel.follow' ? { moderator_user_id: identity.user_id } : {}) },
               transport: { method: 'websocket', session_id: payload.session.id }
             }) });
@@ -320,6 +374,8 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
       } else if (metadata.message_type === 'notification' && !seen.has(metadata.message_id)) {
         seen.add(metadata.message_id);
         if (seen.size > 1000) seen.delete(seen.values().next().value);
+        console.log(`Twitch event: ${payload.subscription.type} from ${feedName(payload.event) || 'unknown'}`);
+        addFeed(payload.subscription.type, payload.event, Date.parse(metadata.message_timestamp) || Date.now(), metadata.message_id);
         if (payload.event.custom_power_up) rememberPowerUps([payload.event.custom_power_up]);
         for (const data of projectEvents(payload.subscription.type, payload.event, liveEventSettings())) {
           for (const client of clients) client.write(`event: project-event\ndata: ${JSON.stringify(data)}\n\n`);
@@ -327,8 +383,14 @@ function connect(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
         if (['channel.custom_power_up_redemption.add', 'channel.channel_points_custom_reward_redemption.add'].includes(payload.subscription.type)) {
           payload.event = routeEvent(payload.event, liveEventSettings());
         }
+        if (hook && await callHook('onEvent', payload.subscription.type, payload.event, metadata) === 'handled') return;
         if (payload.subscription.type === 'channel.custom_power_up_redemption.add') {
           const event = payload.event;
+          const bits = applyEvent(activity, payload.subscription.type, event);
+          if (bits !== activity) {
+            activity = { ...bits, _updated: { ...activity._updated, cheerer: Date.parse(metadata.message_timestamp) || Date.now() } };
+            publish();
+          }
           if (!isColourPowerUp(event) || event.status === 'canceled') return;
           if (paint.add(event)) console.log(`${event.custom_power_up.title}: colour change scheduled.`);
           return;
@@ -384,6 +446,20 @@ async function main() {
     await authorize(); identity = await validate();
   }
   activity = { ...activity, ...read(`activity-${identity.user_id}.json`, {}) };
+  feed = read(`feed-${identity.user_id}.json`, []);
+  if (!Array.isArray(feed)) feed = [];
+  if (studio) {
+    // Projects connected in Studio use their own store; carry over names saved by the older helper.
+    try {
+      const old = JSON.parse(fs.readFileSync(path.join(process.env.LOCALAPPDATA || os.homedir(), 'TSS-Overlay', `activity-${identity.user_id}.json`)));
+      for (const key of ['follower', 'subscriber', 'cheerer', 'donator']) {
+        if (!activity[key] && typeof old[key] === 'string' && old[key]) {
+          activity[key] = old[key].slice(0, 150);
+          activity._updated = { ...activity._updated, [key]: old._updated?.[key] || 1 };
+        }
+      }
+    } catch {}
+  }
   if (process.argv.includes('--setup')) { await setup(); return; }
   powerUpBindings = read(`power-ups-${identity.user_id}.json`, {})[root] || {};
   try {
@@ -407,9 +483,12 @@ async function main() {
     console.log('Previous subs/cheers cannot be retrieved chronologically from Twitch. Run setup-overlay.cmd to enter initial names, or wait for new events.');
   }
   try {
-    const followers = await api(`channels/followers?broadcaster_id=${identity.user_id}&first=1`);
+    const followers = await api(`channels/followers?broadcaster_id=${identity.user_id}&first=10`);
     activity.follower = followers.data[0]?.user_name || '';
     publish();
+    for (const row of [...(followers.data || [])].reverse()) {
+      if (!feed.length && row.user_name) addFeed('channel.follow', row, Date.parse(row.followed_at) || Date.now(), 'follow-' + row.user_id);
+    }
   } catch (error) { console.error('Latest follower lookup: ' + error.message); }
   const server = http.createServer((req, res) => {
     if (req.headers.host === '127.0.0.1:8787' && req.method === 'POST' && req.url === '/control/paint') {
@@ -431,6 +510,10 @@ async function main() {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify(activity)}\n\n`);
       res.write(`event: paint\ndata: ${JSON.stringify(paint.tick())}\n\n`);
+      try { for (const [name, data] of hook?.initial?.() || []) res.write(`event: ${sseName(name)}
+data: ${JSON.stringify(data)}
+
+`); } catch {}
       clients.add(res);
       req.on('close', () => clients.delete(res));
       return;
@@ -448,12 +531,13 @@ async function main() {
       } else console.error('Twitch validation temporarily unavailable.');
     }
   }, 55 * 60 * 1000);
+  await loadHook();
   connect();
   void connectStreamElements().catch(error => {connectionStatus('streamelements','Could not connect. Check the saved token.');console.error(error.message);});
   const streamlabs=studio?.donations?.streamlabs;
   if(streamlabs?.mode==='native'&&streamlabs.token)connectStreamlabs(streamlabs.token,{
     status:message=>connectionStatus('streamlabs',message),
-    donation:event=>{activity={...applyDonation(activity,event),_updated:{...activity._updated,donator:Date.now()}};publish();notify(makeAlert('tip',event));}
+    donation:event=>{activity={...applyDonation(activity,event),_updated:{...activity._updated,donator:Date.now()}};publish();addFeed('tip',event);notify(makeAlert('tip',event));}
   });
   if(studio)process.on('disconnect',()=>process.exit(0));
 }
