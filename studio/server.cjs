@@ -74,8 +74,15 @@ async function serve(getRoot, port=0, offline=false, onLog=null) {
     }
     if(name==='events'){
       if(offline){res.writeHead(410).end();return;}
-      const upstream=http.get('http://127.0.0.1:8787/events',response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
-      upstream.on('error',()=>{if(!res.headersSent)res.writeHead(503,{'Content-Type':'text/plain'});res.end('Start the Twitch runner to receive live events.');});
+      // A non-200 reply makes EventSource give up for good, so when the runner is not up yet
+      // (OBS often loads first) answer 200 with a retry hint; the page reconnects by itself.
+      const retry=()=>{if(!res.headersSent)res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store'});res.end('retry: 2000\n\n');};
+      const upstream=http.get('http://127.0.0.1:8787/events',response=>{
+        if(response.statusCode!==200){response.resume();retry();return;}
+        res.writeHead(200,response.headers);response.pipe(res);
+        response.on('error',()=>res.end());
+      });
+      upstream.on('error',retry);
       res.on('close',()=>upstream.destroy());return;
     }
     try{

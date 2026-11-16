@@ -166,3 +166,18 @@ test('music delay waits from activation, cancels on departure and unload, and re
   activate(true);tick(4999);assert.equal(players.length,1);tick(1);assert.equal(players.length,2);
   activate(false);activate(true);listeners.pagehide();tick(10000);assert.equal(players.length,2);
 });
+
+test('/events answers 200 with a retry hint while the runner is not up, so OBS pages reconnect', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tss-events-retry-'));
+  const probe = require('node:net').createServer();
+  const free = await new Promise(resolve => probe.listen(8787, '127.0.0.1', () => resolve(true)).on('error', () => resolve(false)));
+  if (!free) return; // a real runner owns the port; nothing to assert
+  await new Promise(resolve => probe.close(resolve));
+  const server = await serve(() => root, 0, false);
+  try {
+    const response = await fetch(server.url + '/events');
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /text\/event-stream/);
+    assert.match(await response.text(), /retry: \d+/);
+  } finally { server.close(); fs.rmSync(root, {recursive:true, force:true}); }
+});
