@@ -52,6 +52,11 @@ async function serve(getRoot, port=0, offline=false, onLog=null) {
       } catch { res.writeHead(400).end('Invalid audio settings.'); }
       return;
     }
+    if(name==='__studio-sse.js'&&!offline){
+      try{res.writeHead(200,{'Content-Type':'text/javascript','Cache-Control':'no-store'}).end(req.method==='HEAD'?undefined:fs.readFileSync(path.join(__dirname,'sse-shim.js')));}
+      catch{res.writeHead(404).end();}
+      return;
+    }
     if (name === '__studio-project.js') {
       try {
         const root = getRoot();
@@ -93,7 +98,7 @@ async function serve(getRoot, port=0, offline=false, onLog=null) {
       const headers={'Content-Type':mime[ext]||'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Accept-Ranges':'bytes'};
       if(ext==='.html'){
         if(stat.size>10e6){res.writeHead(413).end();return;}
-        const scripts=(offline?'<script src="/__studio-preview.js"></script>':'')+'<script src="/__studio-project.js?scene='+encodeURIComponent(name)+'"></script><script src="/__studio-audio.js?scene='+encodeURIComponent(name)+'"></script>';
+        const scripts=(offline?'<script src="/__studio-preview.js"></script>':'<script src="/__studio-sse.js"></script>')+'<script src="/__studio-project.js?scene='+encodeURIComponent(name)+'"></script><script src="/__studio-audio.js?scene='+encodeURIComponent(name)+'"></script>';
         const body=fs.readFileSync(file,'utf8').replace(/<head[^>]*>/i,match=>match+scripts);
         res.writeHead(200,headers).end(req.method==='HEAD'?undefined:body);return;
       }

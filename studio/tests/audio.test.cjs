@@ -181,3 +181,32 @@ test('/events answers 200 with a retry hint while the runner is not up, so OBS p
     assert.match(await response.text(), /retry: \d+/);
   } finally { server.close(); fs.rmSync(root, {recursive:true, force:true}); }
 });
+
+test('OBS pages share one /events stream and hold none while hidden', async () => {
+  const opened = [];
+  class FakeSource extends EventTarget {
+    constructor(url) { super(); this.url = url; this.readyState = 1; this.closed = false; opened.push(this); }
+    close() { this.closed = true; this.readyState = 2; }
+  }
+  const window = new EventTarget();
+  Object.assign(window, {EventSource: FakeSource, location: new URL('http://127.0.0.1:8791/overlays/a.html')});
+  const context = vm.createContext({window, location: window.location, URL, EventTarget, Event, MessageEvent,
+    setTimeout: fn => { context.fire = fn; }, addEventListener: (...args) => window.addEventListener(...args)});
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../sse-shim.js'), 'utf8'), context);
+  const a = new window.EventSource('/events'), b = new window.EventSource('/events'), c = new window.EventSource('/events');
+  const seen = [];
+  a.addEventListener('alert', event => seen.push('a:' + event.data));
+  b.onmessage = event => seen.push('b:' + event.data);
+  assert.equal(opened.length, 0, 'waits briefly before connecting');
+  context.fire();
+  assert.equal(opened.length, 1, 'three listeners share one connection');
+  opened[0].dispatchEvent(Object.assign(new Event('alert'), {data: '1'}));
+  opened[0].dispatchEvent(Object.assign(new Event('message'), {data: '2'}));
+  assert.deepEqual(seen, ['a:1', 'b:2']);
+  window.dispatchEvent(Object.assign(new Event('obsSourceVisibleChanged'), {detail: {visible: false}}));
+  assert.equal(opened[0].closed, true, 'hidden scenes free their connection');
+  window.dispatchEvent(Object.assign(new Event('obsSourceVisibleChanged'), {detail: {visible: true}}));
+  assert.equal(opened.length, 2, 'visible again reconnects');
+  a.close(); b.close(); c.close();
+  assert.equal(opened[1].closed, true);
+});
