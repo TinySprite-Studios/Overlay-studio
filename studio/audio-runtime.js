@@ -27,7 +27,9 @@
   function play(sound, done = () => {}) {
     if (!sound?.file || sound.volume === 0) { done(); return; }
     const player = document.createElement('audio');
-    player.src = '/' + sound.file.split('/').map(encodeURIComponent).join('/');
+    // A different host name gets its own browser connection pool (the /events streams fill the other).
+    const origin = location.hostname === '127.0.0.1' ? location.protocol + '//localhost:' + location.port : '';
+    player.src = origin + '/' + sound.file.split('/').map(encodeURIComponent).join('/');
     player.volume = sound.volume / 100;
     player.dataset.studioAudio = 'true';
     (document.body || document.documentElement).append(player);

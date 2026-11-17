@@ -28,12 +28,15 @@ const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=u
 async function serve(getRoot, port=0, offline=false, onLog=null) {
   const sockets=new Set();
   const server=http.createServer((req,res)=>{
-    if(req.headers.host!==`127.0.0.1:${server.address().port}` || !['GET','HEAD'].includes(req.method)){res.writeHead(403).end();return;}
+    // localhost is accepted as a second origin name: browsers cap connections per host name, so
+    // scene audio fetched through it is never queued behind the open /events streams.
+    const port=server.address().port;
+    if(![`127.0.0.1:${port}`,`localhost:${port}`].includes(req.headers.host) ||!['GET','HEAD'].includes(req.method)){res.writeHead(403).end();return;}
     if(req.url === '/') {res.writeHead(302,{Location:'/overlays/overlay-horizontal.html'}).end();return;}
     if(req.url.startsWith('/__studio-log?')){
       // Lets scene pages report to the Studio Console; OBS gives no F12 console.
       const text=new URL(req.url,'http://localhost').searchParams.get('m');
-      if(onLog&&text)onLog('[OBS scene] '+text.replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,300));
+      if(onLog&&text)onLog('[OBS scene] '+text.replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,300)+'\n');
       res.writeHead(204,{'Cache-Control':'no-store'}).end();return;
     }
     let name;

@@ -20,7 +20,9 @@ if(!testRoot&&!app.requestSingleInstanceLock())app.quit();
 app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus();}});
 const uiURL = pathToFileURL(path.join(__dirname, 'index.html')).href;
 const send = message => { if (win && !win.isDestroyed()) win.webContents.send('studio:event', message); };
-const log = (text, kind = 'info') => send({type:'log', text, kind});
+const stamp = () => { const d = new Date(), p = (n, w = 2) => String(n).padStart(w, '0'); return `[${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}] `; };
+// Every line gets a time so gaps between events are visible.
+const log = (text, kind = 'info') => send({type:'log', text:text.replace(/^(?=[^\n])/gm, stamp), kind});
 const template = () => app.isPackaged ? path.join(process.resourcesPath, 'overlay-template') : path.dirname(__dirname);
 function copyProject(source, dest) {
   const relative=path.relative(source,dest);
